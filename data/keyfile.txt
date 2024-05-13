@@ -1,0 +1,1 @@
+File di testo per generare una IPC key.
