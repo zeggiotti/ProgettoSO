@@ -17,6 +17,7 @@
 #define SIGUSR1_HANDLER_ERR "Errore in impostazione del SIGUSR1 handler..."
 #define SIGUSR2_HANDLER_ERR "Errore in impostazione del SIGUSR2 handler..."
 #define SIGTERM_HANDLER_ERR "Errore in impostazione del SIGTERM handler..."
+#define SIGHUP_HANDLER_ERR "Errore in impostazione del SIGHUP handler..."
 
 #define SIGCONT_SEND_ERR "Errore in invio di SIGCONT al giocatore."
 #define SIGTERM_SEND_ERR "Errore in invio di SIGTERM al giocatore."

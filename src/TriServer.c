@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <signal.h>
+#include <string.h>
 #include "data.h"
 
 void printError(const char *);
@@ -28,7 +29,15 @@ char **board = NULL;
 
 int main(int argc, char *argv[]){
 
-    if(argc < 4) {
+    int isTimeoutNumber = 1;
+    if(argc > 1){
+        for(int i = 0; i < strlen(argv[1]); i++){
+            if(argv[1][i] < '0' || argv[1][i] > '9')
+                isTimeoutNumber = 0;
+        }
+    }
+
+    if(argc < 4 || !isTimeoutNumber || strlen(argv[2]) > 1 || strlen(argv[3]) > 1) {
         // Richiesta mal formata al server.
         printf("%s", HELP_MSG);
         exit(0);
@@ -90,6 +99,10 @@ void set_sig_handlers(){
     if(signal(SIGUSR2, signal_handler) == SIG_ERR){
         printError(SIGUSR2_HANDLER_ERR);
     }
+
+    if(signal(SIGHUP, signal_handler) == SIG_ERR){
+        printError(SIGHUP_HANDLER_ERR);
+    }
 }
 
 /**
@@ -121,7 +134,6 @@ void v(int semnum){
 /**
  * Inizializza i dati necessari a giocare, ovvero i dati riguardanti client, server e la generale gestione della partita (lobby).
  * TODO: Organizzare meglio l'ordine di esecuzione per evitare race condition su info.
- * TODO: Migliore controllo sui dati in input.
 */
 void init_data(char *argv[]){
     key_t lobbyShmKey = ftok(PATH_TO_FILE, FTOK_KEY);
@@ -187,9 +199,6 @@ void printError(const char *msg){
     exit(EXIT_FAILURE);
 }
 
-/**
- * FAQ: Dovrebbe anche terminare i client??
-*/
 void removeIPCs(){
     // Rimozione e staccamento di/da shm di lobby e matrice di gioco e semafori.
     if(semctl(info->semaphores, 0, IPC_RMID, 0) == -1){
@@ -219,10 +228,9 @@ void removeIPCs(){
     }
 }
 
-/** TODO: Gestione chiusura del terminale. */
 void signal_handler(int sig){
     /** TODO: Doppia pressione del Ctrl+C. */
-    if(sig == SIGINT) {
+    if(sig == SIGINT || sig == SIGHUP) {
         // Pressione di Ctrl+C. Si fanno terminare i client e poi il server termina.
         p(INFO_SEM);
 

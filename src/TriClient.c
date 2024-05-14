@@ -66,13 +66,16 @@ void set_sig_handlers(){
 
     if(signal(SIGUSR1, signal_handler) == SIG_ERR)
         printError(SIGUSR1_HANDLER_ERR);
+
+    if(signal(SIGHUP, signal_handler) == SIG_ERR)
+        printError(SIGHUP_HANDLER_ERR);
 }
 
 /**
  * Stampa un messaggio d'errore. Prima di terminare, rimuove tutti gli IPC creati.
 */
 void printError(const char *msg){
-    printf("%s", msg);
+    printf("%s\n", msg);
     removeIPCs();
     exit(EXIT_FAILURE);
 }
@@ -175,7 +178,7 @@ void removeIPCs(){
 }
 
 void signal_handler(int sig){
-    if(sig == SIGINT){
+    if(sig == SIGINT || sig == SIGHUP){
         // Si notifica al server che si vuole abbandonare la partita dopo aver rimosso il client
         // dalle info di gioco e rimosso gli IPC.
         remove_pid_from_game();
