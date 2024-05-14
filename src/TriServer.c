@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 #include "data.h"
 
 void printError(const char *);
@@ -18,8 +19,8 @@ int check_board();
 void removeIPCs();
 void signal_handler(int);
 void set_sig_handlers();
-void p(int);
-void v(int);
+int p(int, int);
+void v(int, int);
 
 // Id del seg. di memoria condivisa che contiene i dati della partita.
 int lobbyDataId = 0;
@@ -36,6 +37,7 @@ int sigint_timestamp = 0;
 // Set di segnali ricevibili dal processo.
 sigset_t processSet;
 
+// Informazioni locali al server per gestire la partita.
 struct matchinfo {
     int players_ready;
     int turn;
@@ -43,6 +45,7 @@ struct matchinfo {
 
 int main(int argc, char *argv[]){
 
+    // il timeout deve essere un valore numerico.
     int isTimeoutNumber = 1;
     if(argc > 1){
         for(int i = 0; i < strlen(argv[1]); i++){
@@ -62,24 +65,25 @@ int main(int argc, char *argv[]){
         init_data(argv);
 
         // Ad ogni segnale che fa riprendere l'esecuzione (SIGUSR1 dei client) si controlla se
-        // stanno partecipando due giocatori. Se così non è si aspetta ancora.
+        // stanno partecipando due giocatori. Se così non è si aspetta ancora. Permette di non fraintendere
+        // i segnali SIGINT ecc...
         int gameIsReady = 0;
         do {
             pause();
             
-            p(INFO_SEM);
+            p(INFO_SEM, NOINT);
                 
             if(info->client_pid[0] != 0 && info->client_pid[1] != 0)
                 gameIsReady = 1;
 
-            v(INFO_SEM);
+            v(INFO_SEM, NOINT);
         } while(!gameIsReady);
 
         printf("%s\n", GAME_STARTING);
 
         init_board();
 
-        p(INFO_SEM);
+        p(INFO_SEM, NOINT);
 
         info->game_started = 1;
 
@@ -97,12 +101,7 @@ int main(int argc, char *argv[]){
         if(kill(info->client_pid[1], SIGUSR1) == -1)
             printError(SIGUSR1_SEND_ERR);
 
-        v(INFO_SEM);
-
-        /* Si aspetta che i giocatori abbiano mostrato la matrice e siano pronti
-        while(matchinfo.players_ready < 2){
-            pause();
-        }*/
+        v(INFO_SEM, NOINT);
 
         // Gestione della partita. Sono necessarie le P e le V perché non si può essere sicuri che sia un solo processo
         // ad accedere ad info in un istante, dal momento che si legge e si modifica info->game_started.
@@ -110,14 +109,18 @@ int main(int argc, char *argv[]){
         int semaphore_turn = CLIENT1_SEM;
 
         while(partitaInCorso){
-            v(semaphore_turn);
-            p(SERVER);
+            v(semaphore_turn, WITHINT);
+
+            // Questo non è un polling: il server attende sul semaforo in una attesa non attiva. Il ciclo serve per distinguere
+            // i casi in cui si esce dalla P perché si ha ottenuto il via libera, da quelli in cui si esce perché è stato ricevuto un
+            // segnale. In tal caso, p ritorna -1 quando errno == EINTR.
+            while(p(SERVER, WITHINT) == -1);
 
             partitaInCorso = partitaInCorso && !check_board();
-            p(INFO_SEM);
+            p(INFO_SEM, NOINT);
             info->game_started = partitaInCorso;
             info->move_made = 0;
-            v(INFO_SEM);
+            v(INFO_SEM, NOINT);
 
             if(partitaInCorso){
                 printf("Giocatore %d con pid %d ha giocato una mossa.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn]);
@@ -126,64 +129,13 @@ int main(int argc, char *argv[]){
             }
         }
 
-        /*
-        while(partitaInCorso){
-            if(kill(info->client_pid[matchinfo.turn], SIGUSR1) == -1)
-                printError(SIGUSR1_SEND_ERR);
-
-            // Controllo eseguito per evitare che la prima pressione del Ctrl+C venga fraintesa con l'esecuzione di una mossa.
-            int movePlayed = 0;
-            do {
-                pause();
-                p(INFO_SEM);
-                movePlayed = info->move_made;
-                v(INFO_SEM);
-            } while (!movePlayed);
-            
-            p(INFO_SEM);
-            partitaInCorso = info->game_started && !check_board();
-            info->game_started = partitaInCorso;
-            info->move_made = 0;
-            v(INFO_SEM);
-
-            if(partitaInCorso){
-                printf("Giocatore %d con pid %d ha giocato una mossa.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn]);
-                matchinfo.turn = (matchinfo.turn == 0) ? 1 : 0;
-            }
-        }
-        */
-
         // Partita terminata. Che sia in parità o che qualcuno abbia vinto, si svegliano i client per far rimuovere i loro IPC,
         // in modo che possano accedere ai semafori prima che essi vengano rimossi.
-
-        /*
-        if(info->client_pid[1] != 0)
-            if(kill(info->client_pid[1], SIGUSR1) == -1)
-                printError(SIGUSR1_SEND_ERR);
-        if(info->client_pid[0] != 0)
-            if(kill(info->client_pid[0], SIGUSR1) == -1)
-                printError(SIGUSR1_SEND_ERR);
-        */
-
         
-        v(CLIENT1_SEM);
-        p(SERVER);
-        v(CLIENT2_SEM);
-        p(SERVER);
-
-        /*        // Si aspetta la disconnessione dei client
-        int gameIsEnded = 0;
-        do {
-            pause();
-            
-            p(INFO_SEM);
-                
-            if(info->client_pid[0] == 0 && info->client_pid[1] == 0)
-                gameIsEnded = 1;
-
-            v(INFO_SEM);
-        } while(!gameIsReady);
-        */
+        v(CLIENT1_SEM, WITHINT);
+        p(SERVER, WITHINT);
+        v(CLIENT2_SEM, WITHINT);
+        p(SERVER, WITHINT);
 
         removeIPCs();
     }
@@ -213,28 +165,42 @@ void set_sig_handlers(){
 
 /**
  * Procedura P Wait.
+ * @param: semnum - il semaforo su cui eseguire p
+ * @param: no_int - dice se si abilita la cattura di segnali durante l'attesa su semaforo.
 */
-void p(int semnum){
-    sigset_t noInterruptionSet, oldSet;
+int p(int semnum, int no_int){
 
-    sigfillset(&noInterruptionSet);
-    sigprocmask(SIG_SETMASK, &noInterruptionSet, &oldSet);
+    // Disabilita la cattura di tutti i segnali (catturabili)
+    if(no_int){
+        sigset_t noInterruptionSet, oldSet;
 
-    processSet = oldSet;
+        sigfillset(&noInterruptionSet);
+        sigprocmask(SIG_SETMASK, &noInterruptionSet, &oldSet);
+
+        processSet = oldSet;
+    }
 
     struct sembuf p;
     p.sem_num = semnum;
     p.sem_op = -1;
     p.sem_flg = 0;
 
-    if(semop(info->semaphores, &p, 1) == -1)
-        printError(P_ERR);
+    int code;
+    if((code = semop(info->semaphores, &p, 1)) == -1){
+        // Vero errore solo se non si riceve EINTR ( = si è ricevuto un segnale)
+        if(errno != EINTR)
+            printError(P_ERR);
+    }
+
+    return code;
 }
 
 /**
  * Procedura V Signal.
+ * @param: semnum - il semaforo su cui eseguire p
+ * @param: no_int - dice se si abilita la cattura di segnali durante l'attesa su semaforo.
 */
-void v(int semnum){
+void v(int semnum, int no_int){
     struct sembuf v;
     v.sem_num = semnum;
     v.sem_op = 1;
@@ -243,7 +209,9 @@ void v(int semnum){
     if(semop(info->semaphores, &v, 1) == -1)
         printError(V_ERR);
 
-    sigprocmask(SIG_SETMASK, &processSet, NULL);
+    // Si abilitano i segnali per attese su semafori in cui si erano disabilitati.
+    if(no_int)
+        sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
 /**
@@ -267,7 +235,7 @@ void init_data(char *argv[]){
     }
 
     // Dopo aver inizializzato i semafori, si esegue una P su essi per inizializzare i dati condivisi.
-    // Questo per permettere ai client di vedere la presenza di una partita, ma non accedervi veramente perché in fase
+    // Questo per permettere ai client di vedere la presenza di una partita, ma non accedervi ancora perché in fase
     // di inizializzazione da parte del server.
 
     sigset_t noInterruptionSet, oldSet;
@@ -287,7 +255,7 @@ void init_data(char *argv[]){
 
     lobbyDataId = shmget(lobbyShmKey, sizeof(struct lobby_data), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     if(lobbyDataId == -1){
-        // DA SEGMENTATION FAULT!
+        /** NB: DA SEGMENTATION FAULT!*/
         printError(GAME_EXISTING_ERR);
     }
 
@@ -332,12 +300,19 @@ void init_data(char *argv[]){
     sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
+/**
+ * Inizializza la matrice a spazi vuoti
+*/
 void init_board(){
     for(int i = 0; i < 9; i++){
         board[i] = ' ';
     }
 }
 
+/**
+ * Controlla se la partita è finita. In qualunque situazione terminale, ritorna 1,
+ * altrimenti 0 se la partita può continuare.
+*/
 int check_board(){
     int isDraw = 1;
     for(int i = 0; i < 3; i++){
@@ -399,6 +374,9 @@ void printError(const char *msg){
     exit(EXIT_FAILURE);
 }
 
+/**
+ * Rimuove gli IPC creati.
+*/
 void removeIPCs(){
     // Rimozione e staccamento di/da shm di lobby e matrice di gioco e semafori.
     if(semctl(info->semaphores, 0, IPC_RMID, 0) == -1){
@@ -437,12 +415,12 @@ void signal_handler(int sig){
 
         // Ritorna indietro per scrivere sopra al carattere ^C
         printf("\r");
-
+        
         int now = time(NULL);
         if(now - sigint_timestamp < MAX_SECONDS || sig == SIGHUP) {
 
             // Pressione di Ctrl+C. Si fanno terminare i client e poi il server termina.
-            p(INFO_SEM);
+            p(INFO_SEM, NOINT);
 
             if(info->client_pid[0] != 0)
                 if(kill(info->client_pid[0], SIGTERM) == -1)
@@ -452,7 +430,7 @@ void signal_handler(int sig){
                 if(kill(info->client_pid[1], SIGTERM) == -1)
                     printError(SIGTERM_SEND_ERR);
 
-            v(INFO_SEM);
+            v(INFO_SEM, NOINT);
 
             removeIPCs();
             exit(0);
@@ -465,7 +443,7 @@ void signal_handler(int sig){
     } else if (sig == SIGUSR2){
         // Un client ha premuto Ctrl+C. Se la partita è iniziata, l'altro client vince a tavolino. Altrimenti non si
         // controlla nulla: siamo in fase di attesa giocatori, chiunque può entrare o uscire dalla lobby.
-        p(INFO_SEM);
+        p(INFO_SEM, NOINT);
 
         if(info->game_started){
             if(info->client_pid[0] == 0){
@@ -483,16 +461,18 @@ void signal_handler(int sig){
             exit(0);
         }
 
-        v(INFO_SEM);
+        v(INFO_SEM, NOINT);
     } else if (sig == SIGUSR1){
-        p(INFO_SEM);
+        // Un client comunica di voler procedere.
+        p(INFO_SEM, NOINT);
 
+        /** FAQ: Può essere rimosso ??? */
         if(info->game_started){
             if(matchinfo.players_ready < 2){
                 matchinfo.players_ready++;
             }
         }
 
-        v(INFO_SEM);
+        v(INFO_SEM, NOINT);
     }
 }

@@ -11,6 +11,9 @@
 #define CLIENT2_SEM 3
 #define SERVER 4
 
+#define WITHINT 0
+#define NOINT 1
+
 #define MAX_SECONDS 1   // Numero massimo di secondi che devono passare tra un Ctrl+C e l'altro.
 
 #define HELP_MSG "\nHELP - per eseguire il server correttamente:\n\n    ./TriServer timeout c1 c2\n\ndove:\n-timeout: il tempo a disposizione per ogni mossa\n-c1: il carattere del giocatore 1\n-c2: il carattere del giocatore 2\n\n"
