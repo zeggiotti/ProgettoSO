@@ -4,7 +4,9 @@
 #include <sys/sem.h>
 
 #define CLEAR "\033[H\033[J"
-#define BLANK_LINE "                       "
+#define BLANK_LINE "                                               "
+#define BOARD_TAB "   "
+#define FIELD_TAB " "
 
 #define INFO_SEM 0      // Semaforo che gestisce l'accesso alle informazioni della partita.
 #define BOARD_SEM 1     // Semaforo che gestisce l'accesso alla matrice di gioco.
@@ -49,7 +51,7 @@
 
 #define NO_GAME_FOUND "Non è stata trovata alcuna partita a cui partecipare.\nEsegui un server per iniziare a giocare."
 #define GAME_EXISTING_ERR "Una partita è già iniziata. Riprova più tardi."
-#define GAME_STARTING "> La partita sta iniziando."
+#define GAME_STARTING "> La partita è iniziata."
 #define WAITING "> In attesa di un giocatore..."
 #define QUITTING "> Abbandono..."
 

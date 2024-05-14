@@ -44,6 +44,7 @@ int semaphores;
 // Indirizzo di memoria condivisa che contiene la matrice di gioco.
 char *board = NULL;
 
+// Indice nell'array info->client_pid del giocatore
 int player;
 
 // Set di segnali ricevibili dal processo.
@@ -161,6 +162,7 @@ void printError(const char *msg){
 
 /**
  * Disabilita la visualizzazione dei caratteri inseriti a linea di comando.
+ * NB: Potrebbe dare problemi in Delta.
 */
 void remove_terminal_echo(){
     termios.c_lflag &= ~ECHO;
@@ -230,36 +232,61 @@ void v(int semnum, int no_int){
  * Stampa la matrice di gioco.
 */
 void print_board(){
-    printf("%s", CLEAR);
+    printf("%s%s\n", FIELD_TAB, CLEAR);
+    printf(" %s1   2   3\n", BOARD_TAB);
+    printf(" %s%s  .   .  \n", FIELD_TAB, BOARD_TAB);
+
+    char righe[] = {'A', 'B', 'C'};
 
     for(int i = 0; i < 3; i++){
+        printf("%s%c%s", FIELD_TAB, righe[i], BOARD_TAB);
         for(int j = 0; j < 3; j++){
+            if(j > 0)
+                printf(" ");
+
             printf("%c", board[(3 * i) + j]);
+
+            if(j < 2)
+                printf(" ");
+
             if(j < 2)
                 printf("|");
             else
                 printf("\n");
         }
-        if(i < 2)
-            printf("_____\n");
+        if(i < 2){
+            printf("%s%s---+---+---", FIELD_TAB, BOARD_TAB);
+            printf("\n");
+        }
     }
+
+    printf(" %s%s  '   '  \n\n", FIELD_TAB, BOARD_TAB);
 }
 
 /**
  * Esegue una mossa. Si suppone che ad inserimento errato equivalga concedere il turno ???.
- * TODO: Controllo sui dati in input.
+ * TODO: Migliore acquisizione dati (interfaccia).
 */
 void move(){
-    int riga, colonna;
-    printf("\nRiga: ");
-    scanf("%d", &riga);
-    printf("Colonna: ");
-    scanf("%d", &colonna);
+    char coord[4];
+    printf("> Inserisci una coordinata %c: ", info->signs[player]);
+    scanf("%3s", coord);
 
-    p(INFO_SEM, NOINT);
+    if(coord[2] != '\0' || (coord[1] < '1' && coord[1] > '3') || 
+        ((coord[0] < 'a' || coord[0] > 'c') && (coord[0] < 'A' || coord[0] > 'C'))){
+        return;
+    }
+
+    int colonna = coord[1] - '1';
+    int riga;
+    if(coord[0] >= 'A' && coord[0] <= 'C')
+        riga = coord[0] - 'A';
+    else
+        riga = coord[0] - 'a';
+
+    
     if(board[(riga * 3) + colonna] == ' ')
         board[(riga * 3) + colonna] = info->signs[player];
-    v(INFO_SEM, NOINT);
 }
 
 /**
