@@ -208,8 +208,11 @@ void removeIPCs(){
 void signal_handler(int sig){
     if(sig == SIGINT || sig == SIGHUP){
 
+        // Ritorna indietro per scrivere sopra al carattere ^C
+        printf("\r");
+
         int now = time(NULL);
-        if(now - sigint_timestamp < MAX_SECONDS){
+        if(now - sigint_timestamp < MAX_SECONDS || sig == SIGHUP){
             // Si notifica al server che si vuole abbandonare la partita dopo aver rimosso il client
             // dalle info di gioco e rimosso gli IPC.
             remove_pid_from_game();
@@ -227,7 +230,7 @@ void signal_handler(int sig){
     } else if(sig == SIGTERM){
         // Terminazione causata dal server.
         removeIPCs();
-        printf(SERVER_STOPPED_GAME);
+        printf("%s\n", SERVER_STOPPED_GAME);
         exit(0);
     }
 }

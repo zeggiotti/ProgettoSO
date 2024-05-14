@@ -280,8 +280,11 @@ void removeIPCs(){
 void signal_handler(int sig){
     if(sig == SIGINT || sig == SIGHUP) {
 
+        // Ritorna indietro per scrivere sopra al carattere ^C
+        printf("\r");
+
         int now = time(NULL);
-        if(now - sigint_timestamp < MAX_SECONDS) {
+        if(now - sigint_timestamp < MAX_SECONDS || sig == SIGHUP) {
 
             // Pressione di Ctrl+C. Si fanno terminare i client e poi il server termina.
             p(INFO_SEM);
