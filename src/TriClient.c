@@ -53,6 +53,8 @@ int main(int argc, char *argv[]){
 
     set_sig_handlers();
 
+    printf("%s", CLEAR);
+
     tcgetattr(STDIN_FILENO, &termios);
 
     init_data();
@@ -66,7 +68,7 @@ int main(int argc, char *argv[]){
     // Si aspetta di essere in due!
     pause();
 
-    printf("%s\n", GAME_STARTING);
+    printf("\n%s\n", GAME_STARTING);
 
     p(INFO_SEM, NOINT);
 
@@ -77,8 +79,7 @@ int main(int argc, char *argv[]){
         player = 1;
 
     // Indica se la partita è in corso o se è terminata (parità o vittoria)
-    /** FAQ: Si può assegnare il valore di info->game_started ??? */
-    int partitaInCorso = 1;
+    int partitaInCorso = info->game_started;
 
     v(INFO_SEM, NOINT);
 
@@ -107,16 +108,19 @@ int main(int argc, char *argv[]){
         if(partitaInCorso){
             // La partita non è finita. Si procede.
             move();
-            p(INFO_SEM, NOINT);
-            info->move_made = 1;
-            v(INFO_SEM, NOINT);
             print_board();
 
             remove_terminal_echo();
 
             v(SERVER, WITHINT);
         } else {
-            printf("Partita terminata.\n");
+            printf("\n%s", GAME_ENDED);
+            if(info->winner == getpid())
+                printf(" %s\n\n", YOU_WON);
+            else if(info->winner == info->server_pid)
+                printf(" %s\n\n", DRAW);
+            else
+                printf(" %s\n\n", YOU_LOST);
         }
     }
 
@@ -247,7 +251,7 @@ void print_board(){
 */
 void move(){
     int riga, colonna;
-    printf("Riga: ");
+    printf("\nRiga: ");
     scanf("%d", &riga);
     printf("Colonna: ");
     scanf("%d", &colonna);
@@ -358,6 +362,8 @@ void signal_handler(int sig){
 
         // Ritorna indietro per scrivere sopra al carattere ^C
         printf("\r");
+        printf("%s\n", BLANK_LINE);
+        printf("%s\n\n", QUITTING);
         
         // Si notifica al server che si vuole abbandonare la partita dopo aver rimosso il client
         // dalle info di gioco e rimosso gli IPC.
@@ -373,11 +379,18 @@ void signal_handler(int sig){
 
     } else if(sig == SIGTERM){
         // Terminazione causata dal server.
+        printf("\r%s\n", BLANK_LINE);
+
+        // P e V non necessarie: si è sicuri che info->winner ha già il valore che deve assumere.
+        if(info->winner == info->server_pid)
+            printf("%s\n\n", SERVER_STOPPED_GAME);
+        else
+            printf("%s\n\n", GAME_WON);
+
         removeIPCs();
 
         restore_terminal_echo();
 
-        printf("\r%s\n", SERVER_STOPPED_GAME);
         exit(0);
     }
 }

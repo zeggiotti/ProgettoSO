@@ -4,6 +4,7 @@
 #include <sys/sem.h>
 
 #define CLEAR "\033[H\033[J"
+#define BLANK_LINE "                       "
 
 #define INFO_SEM 0      // Semaforo che gestisce l'accesso alle informazioni della partita.
 #define BOARD_SEM 1     // Semaforo che gestisce l'accesso alla matrice di gioco.
@@ -44,12 +45,22 @@
 #define SEM_ERR "Errore in creazione o inizializzazione del set di semafori."
 #define SEM_DEL_ERR "Errore in rimozione del set di semafori."
 
-#define NO_GAME_FOUND "Non è stata trovata alcuna partita a cui partecipare. Esegui un server per iniziare a giocare."
-#define GAME_EXISTING_ERR "Una partita è già iniziata. Riprova più tardi."
-#define GAME_STARTING "La partita sta iniziando."
-#define WAITING "In attesa di un giocatore..."
+#define WAITING_FOR_PLAYERS "> In attesa di giocatori..."
 
-#define SERVER_STOPPED_GAME "Partita terminata dal server."
+#define NO_GAME_FOUND "Non è stata trovata alcuna partita a cui partecipare.\nEsegui un server per iniziare a giocare."
+#define GAME_EXISTING_ERR "Una partita è già iniziata. Riprova più tardi."
+#define GAME_STARTING "> La partita sta iniziando."
+#define WAITING "> In attesa di un giocatore..."
+#define QUITTING "> Abbandono..."
+
+#define SERVER_STOPPED_GAME "> Partita terminata dal server."
+#define RESIGNED_GAME "> Partita terminata per abbandono."
+
+#define GAME_ENDED "> Partita terminata."
+#define GAME_WON "> L'avversario ha abbandonato. Hai vinto a tavolino!"
+#define YOU_WON "Hai vinto!"
+#define YOU_LOST "Hai perso."
+#define DRAW "Si è conclusa in parità."
 
 struct lobby_data {
     pid_t server_pid;

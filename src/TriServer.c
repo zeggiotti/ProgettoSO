@@ -60,6 +60,9 @@ int main(int argc, char *argv[]){
         exit(0);
     } else {
 
+        printf("%s", CLEAR);
+        printf("%s\n", WAITING_FOR_PLAYERS);
+
         set_sig_handlers();
 
         init_data(argv);
@@ -69,6 +72,7 @@ int main(int argc, char *argv[]){
         // i segnali SIGINT ecc...
         int gameIsReady = 0;
         do {
+            
             pause();
             
             p(INFO_SEM, NOINT);
@@ -76,10 +80,20 @@ int main(int argc, char *argv[]){
             if(info->client_pid[0] != 0 && info->client_pid[1] != 0)
                 gameIsReady = 1;
 
+            if(info->num_clients > matchinfo.players_ready){
+                int index = 0;
+                if(info->client_pid[1] != 0)
+                    index = 1;
+                matchinfo.players_ready++;
+                printf("\n> Processo PID %d collegato come Giocatore %d (%d/2).\n", info->client_pid[index], index + 1, info->num_clients);
+            } else if(info->num_clients < matchinfo.players_ready){
+                matchinfo.players_ready--;
+            }
+
             v(INFO_SEM, NOINT);
         } while(!gameIsReady);
 
-        printf("%s\n", GAME_STARTING);
+        printf("\n%s\n", GAME_STARTING);
 
         init_board();
 
@@ -87,11 +101,9 @@ int main(int argc, char *argv[]){
 
         info->game_started = 1;
 
-        matchinfo.players_ready = 0;
         matchinfo.turn = 0;
 
         int partitaInCorso = info->game_started;
-        printf("Player 1: %d\nPlayer 2: %d\n", info->client_pid[0], info->client_pid[1]);
 
         // La partita è pronta. Lo si comunica ai client facendo riprendere la loro esecuzione, i quali visualizzano la matrice
         // a schermo e aspettano.
@@ -117,13 +129,10 @@ int main(int argc, char *argv[]){
             while(p(SERVER, WITHINT) == -1);
 
             partitaInCorso = partitaInCorso && !check_board();
-            p(INFO_SEM, NOINT);
             info->game_started = partitaInCorso;
-            info->move_made = 0;
-            v(INFO_SEM, NOINT);
 
             if(partitaInCorso){
-                printf("Giocatore %d con pid %d ha giocato una mossa.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn]);
+                printf("\n> Giocatore %d con (PID %d) ha giocato una mossa.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn]);
                 matchinfo.turn = (matchinfo.turn == 0) ? 1 : 0;
                 semaphore_turn = (semaphore_turn == CLIENT1_SEM) ? CLIENT2_SEM : CLIENT1_SEM;
             }
@@ -255,8 +264,9 @@ void init_data(char *argv[]){
 
     lobbyDataId = shmget(lobbyShmKey, sizeof(struct lobby_data), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     if(lobbyDataId == -1){
-        /** NB: DA SEGMENTATION FAULT!*/
-        printError(GAME_EXISTING_ERR);
+        /** SENZA EXIT DA SEGMENTATION FAULT! (sul remove IPCs dei printError successivi)*/
+        printf("%s\n", GAME_EXISTING_ERR);
+        exit(-1);
     }
 
     // Contiene le informazioni della partita.
@@ -298,6 +308,8 @@ void init_data(char *argv[]){
         printError(V_ERR);
 
     sigprocmask(SIG_SETMASK, &processSet, NULL);
+
+    matchinfo.players_ready = 0;
 }
 
 /**
@@ -362,7 +374,10 @@ int check_board(){
         
         return ended;
 
-    } else return isDraw;
+    } else {
+        info->winner = info->server_pid;
+        return isDraw;
+    }
 }
 
 /**
@@ -380,7 +395,6 @@ void printError(const char *msg){
 void removeIPCs(){
     // Rimozione e staccamento di/da shm di lobby e matrice di gioco e semafori.
     if(semctl(info->semaphores, 0, IPC_RMID, 0) == -1){
-        printf("eror");
         printf("%s\n", SEM_DEL_ERR);
     }
 
@@ -408,7 +422,7 @@ void removeIPCs(){
 }
 
 /**
- * TODO: Aggiungere che quando un client quitta l'altro diventa automaticamente il player 1.
+ * Gestisce i segnali che vogliamo catturare.
 */
 void signal_handler(int sig){
     if(sig == SIGINT || sig == SIGHUP) {
@@ -421,6 +435,8 @@ void signal_handler(int sig){
 
             // Pressione di Ctrl+C. Si fanno terminare i client e poi il server termina.
             p(INFO_SEM, NOINT);
+
+            info->winner = info->server_pid;
 
             if(info->client_pid[0] != 0)
                 if(kill(info->client_pid[0], SIGTERM) == -1)
@@ -437,7 +453,7 @@ void signal_handler(int sig){
 
         } else {
             sigint_timestamp = now;
-            printf("Per terminare l'esecuzione, premere Ctrl+C un'altra volta entro %d secondi.\n", MAX_SECONDS);
+            printf("%s\nPer terminare l'esecuzione, premere Ctrl+C un'altra volta entro %d secondi.\n", BLANK_LINE, MAX_SECONDS);
         }
 
     } else if (sig == SIGUSR2){
@@ -446,33 +462,30 @@ void signal_handler(int sig){
         p(INFO_SEM, NOINT);
 
         if(info->game_started){
+            int index;
+
             if(info->client_pid[0] == 0){
                 if(info->client_pid[1] != 0)
                     if(kill(info->client_pid[1], SIGTERM) == -1)
                         printError(SIGTERM_SEND_ERR);
+                index = 1;
             } else if (info->client_pid[1] == 0){
                 if(info->client_pid[0] != 0)
                     if(kill(info->client_pid[0], SIGTERM) == -1)
                         printError(SIGTERM_SEND_ERR);
+                index = 0;
             }
             
-            printf("Partita terminata per abbandono.\n");
+            info->winner = info->client_pid[index];
+
+            printf("\n%s", RESIGNED_GAME);
+            printf(" Vince a tavolino Giocatore %d (PID %d).\n\n", index + 1, info->client_pid[index]);
             removeIPCs();
             exit(0);
         }
 
         v(INFO_SEM, NOINT);
-    } else if (sig == SIGUSR1){
-        // Un client comunica di voler procedere.
-        p(INFO_SEM, NOINT);
 
-        /** FAQ: Può essere rimosso ??? */
-        if(info->game_started){
-            if(matchinfo.players_ready < 2){
-                matchinfo.players_ready++;
-            }
-        }
-
-        v(INFO_SEM, NOINT);
+        
     }
 }
