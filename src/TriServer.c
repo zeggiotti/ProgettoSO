@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <time.h>
 #include "data.h"
 
 void printError(const char *);
@@ -26,6 +27,9 @@ struct lobby_data *info = NULL;
 
 // Indirizzo di memoria condivisa che contiene la matrice di gioco.
 char **board = NULL;
+
+// Timestamp dell'ultima pressione di Ctrl+C.
+int sigint_timestamp = 0;
 
 int main(int argc, char *argv[]){
 
@@ -77,7 +81,13 @@ int main(int argc, char *argv[]){
         v(INFO_SEM);
 
         // Per ora: si rimane bloccati al posto di giocare.
-        pause();
+        int gameStarted = 0;
+        do {
+            pause();
+            p(INFO_SEM);
+            gameStarted = info->game_started;
+            v(INFO_SEM);
+        } while (gameStarted);
 
         removeIPCs();
     }
@@ -133,12 +143,31 @@ void v(int semnum){
 
 /**
  * Inizializza i dati necessari a giocare, ovvero i dati riguardanti client, server e la generale gestione della partita (lobby).
- * TODO: Organizzare meglio l'ordine di esecuzione per evitare race condition su info.
 */
 void init_data(char *argv[]){
     key_t lobbyShmKey = ftok(PATH_TO_FILE, FTOK_KEY);
     if(lobbyShmKey == -1)
         printError(FTOK_ERR);
+
+    int sems = semget(IPC_PRIVATE, 2, S_IRUSR | S_IWUSR);
+    if(sems == -1){
+        printError(SEM_ERR);
+    }
+
+    short values[] = {1, 1};
+    union semun arg;
+    arg.array = values;
+    if(semctl(sems, 0, SETALL, arg) == -1){
+        printError(SEM_ERR);
+    }
+
+    struct sembuf p;
+    p.sem_num = 0;
+    p.sem_op = -1;
+    p.sem_flg = 0;
+
+    if(semop(sems, &p, 1) == -1)
+        printError(P_ERR);
 
     lobbyDataId = shmget(lobbyShmKey, sizeof(struct lobby_data), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     if(lobbyDataId == -1){
@@ -151,19 +180,7 @@ void init_data(char *argv[]){
         printError(SHMAT_ERR);
     }
 
-    info->semaphores = semget(IPC_PRIVATE, 2, S_IRUSR | S_IWUSR);
-    if(info->semaphores == -1){
-        printError(SEM_ERR);
-    }
-
-    short values[] = {1, 1};
-    union semun arg;
-    arg.array = values;
-    if(semctl(info->semaphores, 0, SETALL, arg) == -1){
-        printError(SEM_ERR);
-    }
-
-    p(INFO_SEM);
+    info->semaphores = sems;
 
     int board_shmid = shmget(IPC_CREAT, 9 * sizeof(char), IPC_CREAT | S_IRUSR | S_IWUSR);
     if(board_shmid == -1){
@@ -187,7 +204,13 @@ void init_data(char *argv[]){
     if(board == (void *) -1)
         printError(SHMAT_ERR);
 
-    v(INFO_SEM);
+    struct sembuf v;
+    v.sem_num = 0;
+    v.sem_op = 1;
+    v.sem_flg = 0;
+
+    if(semop(sems, &v, 1) == -1)
+        printError(V_ERR);
 }
 
 /**
@@ -229,23 +252,32 @@ void removeIPCs(){
 }
 
 void signal_handler(int sig){
-    /** TODO: Doppia pressione del Ctrl+C. */
     if(sig == SIGINT || sig == SIGHUP) {
-        // Pressione di Ctrl+C. Si fanno terminare i client e poi il server termina.
-        p(INFO_SEM);
 
-        if(info->client_pid[0] != 0)
-            if(kill(info->client_pid[0], SIGTERM) == -1)
+        int now = time(NULL);
+        if(now - sigint_timestamp < MAX_SECONDS) {
+
+            // Pressione di Ctrl+C. Si fanno terminare i client e poi il server termina.
+            p(INFO_SEM);
+
+            if(info->client_pid[0] != 0)
+                if(kill(info->client_pid[0], SIGTERM) == -1)
+                        printError(SIGTERM_SEND_ERR);
+
+            if(info->client_pid[1] != 0)
+                if(kill(info->client_pid[1], SIGTERM) == -1)
                     printError(SIGTERM_SEND_ERR);
 
-        if(info->client_pid[1] != 0)
-            if(kill(info->client_pid[1], SIGTERM) == -1)
-                printError(SIGTERM_SEND_ERR);
+            v(INFO_SEM);
 
-        v(INFO_SEM);
+            removeIPCs();
+            exit(0);
 
-        removeIPCs();
-        exit(0);
+        } else {
+            sigint_timestamp = now;
+            printf("Per terminare l'esecuzione, premere Ctrl+C un'altra volta entro %d secondi.\n", MAX_SECONDS);
+        }
+
     } else if (sig == SIGUSR2){
         // Un client ha premuto Ctrl+C. Se la partita è iniziata, l'altro client vince a tavolino. Altrimenti non si
         // controlla nulla: siamo in fase di attesa giocatori, chiunque può entrare o uscire dalla lobby.

@@ -6,6 +6,8 @@
 #define INFO_SEM 0      // Semaforo che gestisce l'accesso alle informazioni della partita
 #define BOARD_SEM 1     // Semaforo che gestisce l'accesso alla matrice di gioco.
 
+#define MAX_SECONDS 1   // Numero massimo di secondi che devono passare tra un Ctrl+C e l'altro.
+
 #define HELP_MSG "\nHELP - per eseguire il server correttamente:\n\n    ./TriServer timeout c1 c2\n\ndove:\n-timeout: il tempo a disposizione per ogni mossa\n-c1: il carattere del giocatore 1\n-c2: il carattere del giocatore 2\n\n"
 
 #define PATH_TO_FILE "data/keyfile.txt"

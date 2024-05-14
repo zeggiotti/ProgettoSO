@@ -6,6 +6,7 @@
 #include <sys/shm.h>
 #include <unistd.h>
 #include <signal.h>
+#include <time.h>
 #include "data.h"
 #include <errno.h>
 #include <string.h>
@@ -31,6 +32,9 @@ pid_t server;
 // Indirizzo di memoria condivisa che contiene la matrice di gioco.
 char *board = NULL;
 
+// Timestamp dell'ultima pressione di Ctrl+C.
+int sigint_timestamp = 0;
+
 int main(int argc, char *argv[]){
 
     set_sig_handlers();
@@ -44,11 +48,23 @@ int main(int argc, char *argv[]){
     printf("%s\n", WAITING);
 
     // Si attende di essere in due giocatori.
-    pause();
+    int gameStarted = 0;
+    do {
+        pause();
+        p(INFO_SEM);
+        gameStarted = info->game_started;
+        v(INFO_SEM);
+    } while (!gameStarted);
 
     printf("%s\n", GAME_STARTING);
 
-    pause();
+    gameStarted = 0;
+    do {
+        pause();
+        p(INFO_SEM);
+        gameStarted = info->game_started;
+        v(INFO_SEM);
+    } while (gameStarted);
 
     removeIPCs();
 
@@ -179,15 +195,23 @@ void removeIPCs(){
 
 void signal_handler(int sig){
     if(sig == SIGINT || sig == SIGHUP){
-        // Si notifica al server che si vuole abbandonare la partita dopo aver rimosso il client
-        // dalle info di gioco e rimosso gli IPC.
-        remove_pid_from_game();
-        removeIPCs();
 
-        if(kill(server, SIGUSR2) == -1)
-            printError(SIGUSR2_SEND_ERR);
+        int now = time(NULL);
+        if(now - sigint_timestamp < MAX_SECONDS){
+            // Si notifica al server che si vuole abbandonare la partita dopo aver rimosso il client
+            // dalle info di gioco e rimosso gli IPC.
+            remove_pid_from_game();
+            removeIPCs();
 
-        exit(0);
+            if(kill(server, SIGUSR2) == -1)
+                printError(SIGUSR2_SEND_ERR);
+
+            exit(0);
+        } else {
+            sigint_timestamp = now;
+            printf("Per terminare l'esecuzione, premere Ctrl+C un'altra volta entro %d secondi.\n", MAX_SECONDS);
+        }
+
     } else if(sig == SIGTERM){
         // Terminazione causata dal server.
         removeIPCs();
