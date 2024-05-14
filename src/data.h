@@ -5,11 +5,11 @@
 
 #define CLEAR "\033[H\033[J"
 
-#define INFO_SEM 0      // Semaforo che gestisce l'accesso alle informazioni della partita
+#define INFO_SEM 0      // Semaforo che gestisce l'accesso alle informazioni della partita.
 #define BOARD_SEM 1     // Semaforo che gestisce l'accesso alla matrice di gioco.
-#define CLIENT1_SEM 2
-#define CLIENT2_SEM 3
-#define SERVER 4
+#define CLIENT1_SEM 2   // Semaforo per sincronizzare il client 1.
+#define CLIENT2_SEM 3   // Semaforo per sincronizzare il client 2.
+#define SERVER 4        // Semaforo per sincronizzare il server.
 
 #define WITHINT 0
 #define NOINT 1
@@ -58,7 +58,7 @@ struct lobby_data {
     int timeout;
     char signs[2];          // Caratteri che useranno i client.
     int board_shmid;        // Id di seg. di mem. condivisa con la matrice di gioco.
-    int semaphores;         
+    int semaphores;         // Id del set di semafori.
     int game_started;       // (Booleano) indica se la partita è iniziata o meno.
     pid_t winner;
     int move_made;          // Impostato a 1 dal client quando esegue una mossa.
