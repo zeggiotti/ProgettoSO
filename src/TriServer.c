@@ -174,6 +174,17 @@ void init_data(char *argv[]){
         printError(SEM_ERR);
     }
 
+    // Dopo aver inizializzato i semafori, si esegue una P su essi per inizializzare i dati condivisi.
+    // Questo per permettere ai client di vedere la presenza di una partita, ma non accedervi veramente perché in fase
+    // di inizializzazione da parte del server.
+
+    sigset_t noInterruptionSet, oldSet;
+
+    sigfillset(&noInterruptionSet);
+    sigprocmask(SIG_SETMASK, &noInterruptionSet, &oldSet);
+
+    processSet = oldSet;
+
     struct sembuf p;
     p.sem_num = 0;
     p.sem_op = -1;
@@ -224,6 +235,8 @@ void init_data(char *argv[]){
 
     if(semop(sems, &v, 1) == -1)
         printError(V_ERR);
+
+    sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
 /**
