@@ -35,6 +35,9 @@ char *board = NULL;
 // Timestamp dell'ultima pressione di Ctrl+C.
 int sigint_timestamp = 0;
 
+// Set di segnali ricevibili dal processo.
+sigset_t processSet;
+
 int main(int argc, char *argv[]){
 
     set_sig_handlers();
@@ -100,6 +103,13 @@ void printError(const char *msg){
  * Procedura P Wait.
 */
 void p(int semnum){
+    sigset_t noInterruptionSet, oldSet;
+
+    sigfillset(&noInterruptionSet);
+    sigprocmask(SIG_SETMASK, &noInterruptionSet, &oldSet);
+
+    processSet = oldSet;
+    
     struct sembuf p;
     p.sem_num = semnum;
     p.sem_op = -1;
@@ -120,6 +130,8 @@ void v(int semnum){
 
     if(semop(info->semaphores, &v, 1) == -1)
         printError(V_ERR);
+
+    sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
 /**

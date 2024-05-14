@@ -31,6 +31,9 @@ char **board = NULL;
 // Timestamp dell'ultima pressione di Ctrl+C.
 int sigint_timestamp = 0;
 
+// Set di segnali ricevibili dal processo.
+sigset_t processSet;
+
 int main(int argc, char *argv[]){
 
     int isTimeoutNumber = 1;
@@ -81,6 +84,7 @@ int main(int argc, char *argv[]){
         v(INFO_SEM);
 
         // Per ora: si rimane bloccati al posto di giocare.
+        // NB: Il server non termina se uno dei due processi quitta. Questo perché ritorna qui ad aspettare;
         int gameStarted = 0;
         do {
             pause();
@@ -119,6 +123,13 @@ void set_sig_handlers(){
  * Procedura P Wait.
 */
 void p(int semnum){
+    sigset_t noInterruptionSet, oldSet;
+
+    sigfillset(&noInterruptionSet);
+    sigprocmask(SIG_SETMASK, &noInterruptionSet, &oldSet);
+
+    processSet = oldSet;
+
     struct sembuf p;
     p.sem_num = semnum;
     p.sem_op = -1;
@@ -139,6 +150,8 @@ void v(int semnum){
 
     if(semop(info->semaphores, &v, 1) == -1)
         printError(V_ERR);
+
+    sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
 /**
@@ -293,6 +306,7 @@ void signal_handler(int sig){
                     if(kill(info->client_pid[0], SIGTERM) == -1)
                         printError(SIGTERM_SEND_ERR);
             }
+            info->game_started = 0;
         }
 
         v(INFO_SEM);
