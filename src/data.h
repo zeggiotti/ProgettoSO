@@ -3,8 +3,13 @@
 #include <sys/types.h>
 #include <sys/sem.h>
 
+#define CLEAR "\033[H\033[J"
+
 #define INFO_SEM 0      // Semaforo che gestisce l'accesso alle informazioni della partita
 #define BOARD_SEM 1     // Semaforo che gestisce l'accesso alla matrice di gioco.
+#define CLIENT1_SEM 2
+#define CLIENT2_SEM 3
+#define SERVER 4
 
 #define MAX_SECONDS 1   // Numero massimo di secondi che devono passare tra un Ctrl+C e l'altro.
 
@@ -41,7 +46,7 @@
 #define GAME_STARTING "La partita sta iniziando."
 #define WAITING "In attesa di un giocatore..."
 
-#define SERVER_STOPPED_GAME "Il server ha terminato la partita."
+#define SERVER_STOPPED_GAME "Partita terminata dal server."
 
 struct lobby_data {
     pid_t server_pid;
@@ -51,7 +56,9 @@ struct lobby_data {
     char signs[2];          // Caratteri che useranno i client.
     int board_shmid;        // Id di seg. di mem. condivisa con la matrice di gioco.
     int semaphores;         
-    int game_started;       // (Booleano) indica se la partita è iniziata o meno
+    int game_started;       // (Booleano) indica se la partita è iniziata o meno.
+    pid_t winner;
+    int move_made;          // Impostato a 1 dal client quando esegue una mossa.
 };
 
 union semun {

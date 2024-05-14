@@ -13,6 +13,8 @@
 
 void printError(const char *);
 void init_data();
+void init_board();
+int check_board();
 void removeIPCs();
 void signal_handler(int);
 void set_sig_handlers();
@@ -26,13 +28,18 @@ int lobbyDataId = 0;
 struct lobby_data *info = NULL;
 
 // Indirizzo di memoria condivisa che contiene la matrice di gioco.
-char **board = NULL;
+char *board = NULL;
 
 // Timestamp dell'ultima pressione di Ctrl+C.
 int sigint_timestamp = 0;
 
 // Set di segnali ricevibili dal processo.
 sigset_t processSet;
+
+struct matchinfo {
+    int players_ready;
+    int turn;
+} matchinfo;
 
 int main(int argc, char *argv[]){
 
@@ -70,28 +77,113 @@ int main(int argc, char *argv[]){
 
         printf("%s\n", GAME_STARTING);
 
-        p(INFO_SEM);     
+        init_board();
 
-        // La partita ha inizio. Lo si comunica ai client facendo riprendere la loro esecuzione.
+        p(INFO_SEM);
+
+        info->game_started = 1;
+
+        matchinfo.players_ready = 0;
+        matchinfo.turn = 0;
+
+        int partitaInCorso = info->game_started;
+        printf("Player 1: %d\nPlayer 2: %d\n", info->client_pid[0], info->client_pid[1]);
+
+        // La partita è pronta. Lo si comunica ai client facendo riprendere la loro esecuzione, i quali visualizzano la matrice
+        // a schermo e aspettano.
         if(kill(info->client_pid[0], SIGUSR1) == -1)
             printError(SIGUSR1_SEND_ERR);
 
         if(kill(info->client_pid[1], SIGUSR1) == -1)
             printError(SIGUSR1_SEND_ERR);
 
-        info->game_started = 1;
-
         v(INFO_SEM);
 
-        // Per ora: si rimane bloccati al posto di giocare.
-        // NB: Il server non termina se uno dei due processi quitta. Questo perché ritorna qui ad aspettare;
-        int gameStarted = 0;
+        /* Si aspetta che i giocatori abbiano mostrato la matrice e siano pronti
+        while(matchinfo.players_ready < 2){
+            pause();
+        }*/
+
+        // Gestione della partita. Sono necessarie le P e le V perché non si può essere sicuri che sia un solo processo
+        // ad accedere ad info in un istante, dal momento che si legge e si modifica info->game_started.
+        
+        int semaphore_turn = CLIENT1_SEM;
+
+        while(partitaInCorso){
+            v(semaphore_turn);
+            p(SERVER);
+
+            partitaInCorso = partitaInCorso && !check_board();
+            p(INFO_SEM);
+            info->game_started = partitaInCorso;
+            info->move_made = 0;
+            v(INFO_SEM);
+
+            if(partitaInCorso){
+                printf("Giocatore %d con pid %d ha giocato una mossa.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn]);
+                matchinfo.turn = (matchinfo.turn == 0) ? 1 : 0;
+                semaphore_turn = (semaphore_turn == CLIENT1_SEM) ? CLIENT2_SEM : CLIENT1_SEM;
+            }
+        }
+
+        /*
+        while(partitaInCorso){
+            if(kill(info->client_pid[matchinfo.turn], SIGUSR1) == -1)
+                printError(SIGUSR1_SEND_ERR);
+
+            // Controllo eseguito per evitare che la prima pressione del Ctrl+C venga fraintesa con l'esecuzione di una mossa.
+            int movePlayed = 0;
+            do {
+                pause();
+                p(INFO_SEM);
+                movePlayed = info->move_made;
+                v(INFO_SEM);
+            } while (!movePlayed);
+            
+            p(INFO_SEM);
+            partitaInCorso = info->game_started && !check_board();
+            info->game_started = partitaInCorso;
+            info->move_made = 0;
+            v(INFO_SEM);
+
+            if(partitaInCorso){
+                printf("Giocatore %d con pid %d ha giocato una mossa.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn]);
+                matchinfo.turn = (matchinfo.turn == 0) ? 1 : 0;
+            }
+        }
+        */
+
+        // Partita terminata. Che sia in parità o che qualcuno abbia vinto, si svegliano i client per far rimuovere i loro IPC,
+        // in modo che possano accedere ai semafori prima che essi vengano rimossi.
+
+        /*
+        if(info->client_pid[1] != 0)
+            if(kill(info->client_pid[1], SIGUSR1) == -1)
+                printError(SIGUSR1_SEND_ERR);
+        if(info->client_pid[0] != 0)
+            if(kill(info->client_pid[0], SIGUSR1) == -1)
+                printError(SIGUSR1_SEND_ERR);
+        */
+
+        
+        v(CLIENT1_SEM);
+        p(SERVER);
+        v(CLIENT2_SEM);
+        p(SERVER);
+
+        /*        // Si aspetta la disconnessione dei client
+        int gameIsEnded = 0;
         do {
             pause();
+            
             p(INFO_SEM);
-            gameStarted = info->game_started;
+                
+            if(info->client_pid[0] == 0 && info->client_pid[1] == 0)
+                gameIsEnded = 1;
+
             v(INFO_SEM);
-        } while (gameStarted);
+        } while(!gameIsReady);
+        */
 
         removeIPCs();
     }
@@ -162,12 +254,12 @@ void init_data(char *argv[]){
     if(lobbyShmKey == -1)
         printError(FTOK_ERR);
 
-    int sems = semget(IPC_PRIVATE, 2, S_IRUSR | S_IWUSR);
+    int sems = semget(IPC_PRIVATE, 5, S_IRUSR | S_IWUSR);
     if(sems == -1){
         printError(SEM_ERR);
     }
 
-    short values[] = {1, 1};
+    short values[] = {1, 1, 0, 0, 0};
     union semun arg;
     arg.array = values;
     if(semctl(sems, 0, SETALL, arg) == -1){
@@ -195,6 +287,7 @@ void init_data(char *argv[]){
 
     lobbyDataId = shmget(lobbyShmKey, sizeof(struct lobby_data), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     if(lobbyDataId == -1){
+        // DA SEGMENTATION FAULT!
         printError(GAME_EXISTING_ERR);
     }
 
@@ -239,6 +332,64 @@ void init_data(char *argv[]){
     sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
+void init_board(){
+    for(int i = 0; i < 9; i++){
+        board[i] = ' ';
+    }
+}
+
+int check_board(){
+    int isDraw = 1;
+    for(int i = 0; i < 3; i++){
+        for(int j = 0; j < 3; j++){
+            if(board[(3 * i) + j] == ' ')
+                isDraw = 0;
+        }
+    }
+
+    if(!isDraw){
+
+        int ended = 0;
+        char winner_sign = ' ';
+
+        for(int i = 0; i < 3; i++){
+            if(board[(3 * i)] == board[(3 * i) + 1] && board[(3 * i) + 1] == board[(3 * i) + 2] && board[(3 * i)] != ' '){
+                ended = 1;
+                winner_sign = board[(3 * i)];
+            }
+        }
+
+        for(int i = 0; i < 3; i++){
+            if(board[i] == board[3 + i] && board[3 + i] == board[6 + i] && board[i] != ' '){
+                ended = 1;
+                winner_sign = board[i];
+            }
+        }
+
+        if(board[0] == board[4] && board[4] == board[8] && board[0] != ' '){
+            ended = 1;
+            winner_sign = board[0];
+        }
+
+        if(board[2] == board[4] && board[4] == board[6] && board[2] != ' '){
+            ended = 1;
+            winner_sign = board[2];
+        }
+
+        if(ended){
+            int winner_player;
+            if(winner_sign == info->signs[0])
+                winner_player = 0;
+            else
+                winner_player = 1;
+            info->winner = info->client_pid[winner_player];
+        }
+        
+        return ended;
+
+    } else return isDraw;
+}
+
 /**
  * Stampa un messaggio d'errore. Prima di terminare, rimuove tutti gli IPC creati.
 */
@@ -251,6 +402,7 @@ void printError(const char *msg){
 void removeIPCs(){
     // Rimozione e staccamento di/da shm di lobby e matrice di gioco e semafori.
     if(semctl(info->semaphores, 0, IPC_RMID, 0) == -1){
+        printf("eror");
         printf("%s\n", SEM_DEL_ERR);
     }
 
@@ -277,6 +429,9 @@ void removeIPCs(){
     }
 }
 
+/**
+ * TODO: Aggiungere che quando un client quitta l'altro diventa automaticamente il player 1.
+*/
 void signal_handler(int sig){
     if(sig == SIGINT || sig == SIGHUP) {
 
@@ -322,7 +477,20 @@ void signal_handler(int sig){
                     if(kill(info->client_pid[0], SIGTERM) == -1)
                         printError(SIGTERM_SEND_ERR);
             }
-            info->game_started = 0;
+            
+            printf("Partita terminata per abbandono.\n");
+            removeIPCs();
+            exit(0);
+        }
+
+        v(INFO_SEM);
+    } else if (sig == SIGUSR1){
+        p(INFO_SEM);
+
+        if(info->game_started){
+            if(matchinfo.players_ready < 2){
+                matchinfo.players_ready++;
+            }
         }
 
         v(INFO_SEM);

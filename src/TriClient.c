@@ -10,9 +10,12 @@
 #include "data.h"
 #include <errno.h>
 #include <string.h>
+#include <termios.h>
 
 void printError(const char *);
 void init_data();
+void print_board();
+void move();
 void signal_handler(int);
 void removeIPCs();
 void remove_pid_from_game();
@@ -29,11 +32,12 @@ struct lobby_data *info;
 // Pid del server, salvato per non dover accedere alle info con p e v.
 pid_t server;
 
+int semaphores;
+
 // Indirizzo di memoria condivisa che contiene la matrice di gioco.
 char *board = NULL;
 
-// Timestamp dell'ultima pressione di Ctrl+C.
-int sigint_timestamp = 0;
+int player;
 
 // Set di segnali ricevibili dal processo.
 sigset_t processSet;
@@ -50,26 +54,122 @@ int main(int argc, char *argv[]){
 
     printf("%s\n", WAITING);
 
-    // Si attende di essere in due giocatori.
-    int gameStarted = 0;
-    do {
-        pause();
-        p(INFO_SEM);
-        gameStarted = info->game_started;
-        v(INFO_SEM);
-    } while (!gameStarted);
+    pause();
 
     printf("%s\n", GAME_STARTING);
 
-    gameStarted = 0;
-    do {
-        pause();
-        p(INFO_SEM);
-        gameStarted = info->game_started;
-        v(INFO_SEM);
-    } while (gameStarted);
+    p(INFO_SEM);
 
+    // Si va a scoprire il numero di giocatore
+    if(info->client_pid[0] == getpid())
+        player = 0;
+    else
+        player = 1;
+
+    v(INFO_SEM);
+
+    // Stampa la matrice vuota
+    print_board();
+    
+    // RIMUOVERE LA ROBA DI TERMIOS SE NON VA IN LAB
+    struct termios termios;
+    tcgetattr(STDIN_FILENO, &termios);
+    termios.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+
+    // Indica se la partita è in corso o se è terminata (parità o vittoria)
+    int partitaInCorso = 1;
+
+    int my_semaphore = player + CLIENT1_SEM;
+
+    while(partitaInCorso) {
+        p(my_semaphore);
+
+        tcflush(STDIN_FILENO, TCIFLUSH);
+        termios.c_lflag |= ECHO;
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+
+        // In ogni caso si stampa lo stato della partita
+        print_board();
+
+        p(INFO_SEM);
+        // Il server comunica se la partita è terminata o meno
+        partitaInCorso = info->game_started;
+        v(INFO_SEM);
+
+        if(partitaInCorso){
+            move();
+
+            p(INFO_SEM);
+            info->move_made = 1;
+            v(INFO_SEM);
+
+            print_board();
+
+            termios.c_lflag &= ~ECHO;
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+
+            v(SERVER);
+
+            /* Si sveglia il server (che è blocccato su pause()) per far procedere la partita
+            if(kill(server, SIGUSR1) == -1)
+                printError(SIGUSR1_SEND_ERR);*/
+        } else {
+            printf("Partita terminata.\n");
+        }
+    }
+
+    /*
+    do {
+        v(INFO_SEM);
+        // Si aspetta di essere svegliati dal server
+        pause();
+
+        tcflush(STDIN_FILENO, TCIFLUSH);
+        termios.c_lflag |= ECHO;
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+
+        // In ogni caso si stampa lo stato della partita
+        print_board();
+
+        p(INFO_SEM);
+        // Il server comunica se la partita è terminata o meno
+        partitaInCorso = info->game_started;
+        v(INFO_SEM);
+
+        if(partitaInCorso){
+            move();
+
+            p(INFO_SEM);
+            info->move_made = 1;
+            v(INFO_SEM);
+
+            print_board();
+
+            termios.c_lflag &= ~ECHO;
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+
+             Si sveglia il server (che è blocccato su pause()) per far procedere la partita
+            if(kill(server, SIGUSR1) == -1)
+                printError(SIGUSR1_SEND_ERR);
+        } else {
+            printf("Partita terminata.\n");
+        }
+            
+    } while (partitaInCorso);
+    */
+
+    // Nel normale flusso d'esecuzione: i client si rimuovono dalla partita terminata e fanno procedere il server alla rimozione
+    // degli IPCs
+    remove_pid_from_game();
     removeIPCs();
+
+    /*
+    if(kill(server, SIGUSR1) == -1)
+        printError(SIGUSR1_SEND_ERR);
+    */
+
+    v(SERVER);
 
 }
 
@@ -115,7 +215,7 @@ void p(int semnum){
     p.sem_op = -1;
     p.sem_flg = 0;
 
-    if(semop(info->semaphores, &p, 1) == -1)
+    if(semop(semaphores, &p, 1) == -1)
         printError(P_ERR);
 }
 
@@ -128,10 +228,39 @@ void v(int semnum){
     v.sem_op = 1;
     v.sem_flg = 0;
 
-    if(semop(info->semaphores, &v, 1) == -1)
+    if(semop(semaphores, &v, 1) == -1)
         printError(V_ERR);
 
     sigprocmask(SIG_SETMASK, &processSet, NULL);
+}
+
+void print_board(){
+    printf("%s", CLEAR);
+
+    for(int i = 0; i < 3; i++){
+        for(int j = 0; j < 3; j++){
+            printf("%c", board[(3 * i) + j]);
+            if(j < 2)
+                printf("|");
+            else
+                printf("\n");
+        }
+        if(i < 2)
+            printf("_____\n");
+    }
+}
+
+void move(){
+    int riga, colonna;
+    printf("Riga: ");
+    scanf("%d", &riga);
+    printf("Colonna: ");
+    scanf("%d", &colonna);
+
+    p(INFO_SEM);
+    if(board[(riga * 3) + colonna] == ' ')
+        board[(riga * 3) + colonna] = info->signs[player];
+    v(INFO_SEM);
 }
 
 /**
@@ -151,9 +280,23 @@ void init_data(){
         printError(SHMAT_ERR);
 
     // Si accede ai dati con p e v per evitare conflitti di r/w sugli stessi dati.
-    p(INFO_SEM);
+    sigset_t noInterruptionSet, oldSet;
+
+    sigfillset(&noInterruptionSet);
+    sigprocmask(SIG_SETMASK, &noInterruptionSet, &oldSet);
+
+    processSet = oldSet;
+    
+    struct sembuf p;
+    p.sem_num = 0;
+    p.sem_op = -1;
+    p.sem_flg = 0;
+
+    if(semop(info->semaphores, &p, 1) == -1)
+        printError(P_ERR);
 
     server = info->server_pid;
+    semaphores = info->semaphores;
 
     board = shmat(info->board_shmid, NULL, 0);
     if(board == (void *) -1){
@@ -169,7 +312,15 @@ void init_data(){
         info->num_clients++;
     }
 
-    v(INFO_SEM);
+    struct sembuf v;
+    v.sem_num = 0;
+    v.sem_op = 1;
+    v.sem_flg = 0;
+
+    if(semop(semaphores, &v, 1) == -1)
+        printError(V_ERR);
+
+    sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
 /**
@@ -197,7 +348,7 @@ void removeIPCs(){
             printf(SHMDT_ERR);
         }
     }
-
+    
     if(board != NULL){
         if(shmdt(board) == -1){
             printf(SHMDT_ERR);
@@ -210,27 +361,32 @@ void signal_handler(int sig){
 
         // Ritorna indietro per scrivere sopra al carattere ^C
         printf("\r");
+        
+        // Si notifica al server che si vuole abbandonare la partita dopo aver rimosso il client
+        // dalle info di gioco e rimosso gli IPC.
+        remove_pid_from_game();
+        removeIPCs();
 
-        int now = time(NULL);
-        if(now - sigint_timestamp < MAX_SECONDS || sig == SIGHUP){
-            // Si notifica al server che si vuole abbandonare la partita dopo aver rimosso il client
-            // dalle info di gioco e rimosso gli IPC.
-            remove_pid_from_game();
-            removeIPCs();
+        if(kill(server, SIGUSR2) == -1)
+            printError(SIGUSR2_SEND_ERR);
 
-            if(kill(server, SIGUSR2) == -1)
-                printError(SIGUSR2_SEND_ERR);
+        struct termios termios;
+        tcgetattr(STDIN_FILENO, &termios);
+        termios.c_lflag |= ECHO;
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
 
-            exit(0);
-        } else {
-            sigint_timestamp = now;
-            printf("Per terminare l'esecuzione, premere Ctrl+C un'altra volta entro %d secondi.\n", MAX_SECONDS);
-        }
+        exit(0);
 
     } else if(sig == SIGTERM){
         // Terminazione causata dal server.
         removeIPCs();
-        printf("%s\n", SERVER_STOPPED_GAME);
+
+        struct termios termios;
+        tcgetattr(STDIN_FILENO, &termios);
+        termios.c_lflag |= ECHO;
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+
+        printf("\r%s\n", SERVER_STOPPED_GAME);
         exit(0);
     }
 }
