@@ -69,6 +69,10 @@
 #define YOU_LOST "Hai perso."
 #define DRAW "Si è conclusa in parità."
 
+/**
+ * Rappresenta le informazioni della partita in corso per server e client. Entrambi vi accedono man mano che
+ * la partita viene inizializzata.
+*/
 struct lobby_data {
     pid_t server_pid;
     pid_t client_pid[2];
