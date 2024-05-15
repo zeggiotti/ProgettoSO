@@ -31,6 +31,7 @@
 #define SIGUSR2_HANDLER_ERR "Errore in impostazione del SIGUSR2 handler..."
 #define SIGTERM_HANDLER_ERR "Errore in impostazione del SIGTERM handler..."
 #define SIGHUP_HANDLER_ERR "Errore in impostazione del SIGHUP handler..."
+#define SIGALRM_HANDLER_ERR "Errore in impostazione del SIGALRM handler..."
 
 #define SIGCONT_SEND_ERR "Errore in invio di SIGCONT al giocatore."
 #define SIGTERM_SEND_ERR "Errore in invio di SIGTERM al giocatore."
@@ -39,6 +40,8 @@
 
 #define P_ERR "Errore in esecuzione di P"
 #define V_ERR "Errore in esecuzione di V"
+
+#define NO_CHILD_CREATED_ERR "Errore in creazione del processo Computer."
 
 #define SHMAT_ERR "Errore di collegamento al segmento di memoria condivisa."
 #define BOARD_SHM_ERR "Errore di creazione della matrice di gioco (memoria condivisa)."

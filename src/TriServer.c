@@ -132,7 +132,7 @@ int main(int argc, char *argv[]){
             info->game_started = partitaInCorso;
 
             if(partitaInCorso){
-                printf("\n> Giocatore %d con (PID %d) ha giocato la mossa %s.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn],
+                printf("\n> Giocatore %d (PID %d) ha giocato la mossa %s.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn],
                                                 info->move_made);
                 matchinfo.turn = (matchinfo.turn == 0) ? 1 : 0;
                 semaphore_turn = (semaphore_turn == CLIENT1_SEM) ? CLIENT2_SEM : CLIENT1_SEM;
