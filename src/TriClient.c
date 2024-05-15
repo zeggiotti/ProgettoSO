@@ -70,18 +70,6 @@ int main(int argc, char *argv[]){
     child = -1;
     srand(time(NULL));
 
-    int sem = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
-    if(sem == -1){
-        printError(SEM_ERR);
-    }
-
-    short values[] = {1};
-    union semun arg;
-    arg.array = values;
-    if(semctl(sem, 0, SETALL, arg) == -1){
-        printError(SEM_ERR);
-    }
-
     /** TODO: Valuta se implementare il countdown per il timeout (vedi FAQ correlato).
     */
     if(argc == 3){

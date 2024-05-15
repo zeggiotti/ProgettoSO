@@ -21,6 +21,10 @@ void set_sig_handlers();
 int p(int, int);
 void v(int, int);
 
+/**
+ * TODO: Proponi ulteriori giocate.
+*/
+
 // Id del seg. di memoria condivisa che contiene i dati della partita.
 int lobbyDataId = 0;
 
