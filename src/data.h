@@ -3,23 +3,25 @@
 #include <sys/types.h>
 #include <sys/sem.h>
 
-#define CLEAR "\033[H\033[J"
-#define BLANK_LINE "                                               "
-#define BOARD_TAB "   "
-#define FIELD_TAB " "
-
 #define INFO_SEM 0      // Semaforo che gestisce l'accesso alle informazioni della partita.
-#define BOARD_SEM 1     // Semaforo che gestisce l'accesso alla matrice di gioco.
-#define CLIENT1_SEM 2   // Semaforo per sincronizzare il client 1.
-#define CLIENT2_SEM 3   // Semaforo per sincronizzare il client 2.
-#define SERVER 4        // Semaforo per sincronizzare il server.
+#define CLIENT1_SEM 1   // Semaforo per sincronizzare il client 1.
+#define CLIENT2_SEM 2   // Semaforo per sincronizzare il client 2.
+#define SERVER 3        // Semaforo per sincronizzare il server.
 
 #define WITHINT 0
 #define NOINT 1
 
 #define MAX_SECONDS 1   // Numero massimo di secondi che devono passare tra un Ctrl+C e l'altro.
 
+#define USERNAME_DIM 64
+
+#define CLEAR "\033[H\033[J"
+#define BLANK_LINE "                                               "
+#define BOARD_TAB "   "
+#define FIELD_TAB " "
+
 #define HELP_MSG "\nHELP - per eseguire il server correttamente:\n\n    ./TriServer timeout c1 c2\n\ndove:\n-timeout: il tempo a disposizione per ogni mossa\n-c1: il carattere del giocatore 1\n-c2: il carattere del giocatore 2\n\n"
+#define CLIENT_TERMINAL_CMD "\nPuoi eseguire il client in due modalità:\n\n    ./TriClient nomeUtente (per giocare contro un altro utente)\n    ./TriClient nomeUtente \\* (per giocare contro il Computer)\n\n"
 
 #define PATH_TO_FILE "data/keyfile.txt"
 #define FTOK_KEY 'f'
@@ -70,6 +72,7 @@
 struct lobby_data {
     pid_t server_pid;
     pid_t client_pid[2];
+    char usernames[2][USERNAME_DIM];
     int num_clients;
     int timeout;
     char signs[2];          // Caratteri che useranno i client.
@@ -77,7 +80,7 @@ struct lobby_data {
     int semaphores;         // Id del set di semafori.
     int game_started;       // (Booleano) indica se la partita è iniziata o meno.
     pid_t winner;
-    char move_made[3];          // Impostato a 1 dal client quando esegue una mossa.
+    char move_made[3];          // Indica la mossa giocata sulla matrice.
 };
 
 union semun {

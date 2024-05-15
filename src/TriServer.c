@@ -7,7 +7,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <signal.h>
-#include <string.h>
 #include <time.h>
 #include <errno.h>
 #include "data.h"
@@ -45,27 +44,28 @@ struct matchinfo {
 
 int main(int argc, char *argv[]){
 
-    // il timeout deve essere un valore numerico.
+    // Il timeout deve essere un valore numerico.
     int isTimeoutNumber = 1;
     if(argc > 1){
-        for(int i = 0; i < strlen(argv[1]); i++){
+        for(int i = 0; argv[1][i] != '\0'; i++){
             if(argv[1][i] < '0' || argv[1][i] > '9')
                 isTimeoutNumber = 0;
         }
     }
 
-    if(argc < 4 || !isTimeoutNumber || strlen(argv[2]) > 1 || strlen(argv[3]) > 1) {
+    if(argc < 4 || !isTimeoutNumber || argv[2][1] != '\0' || argv[3][1] != '\0') {
         // Richiesta mal formata al server.
         printf("%s", HELP_MSG);
         exit(0);
     } else {
 
         printf("%s", CLEAR);
-        printf("%s\n", WAITING_FOR_PLAYERS);
 
         set_sig_handlers();
 
         init_data(argv);
+
+        printf("%s\n", WAITING_FOR_PLAYERS);
 
         // Ad ogni segnale che fa riprendere l'esecuzione (SIGUSR1 dei client) si controlla se
         // stanno partecipando due giocatori. Se così non è si aspetta ancora. Permette di non fraintendere
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]){
                 if(info->client_pid[1] != 0)
                     index = 1;
                 matchinfo.players_ready++;
-                printf("\n> Processo PID %d collegato come Giocatore %d (%d/2).\n", info->client_pid[index], index + 1, info->num_clients);
+                printf("\n> %s (PID %d) si è collegato (%d/2).\n", info->usernames[index], info->client_pid[index], info->num_clients);
             } else if(info->num_clients < matchinfo.players_ready){
                 matchinfo.players_ready--;
             }
@@ -131,13 +131,28 @@ int main(int argc, char *argv[]){
             partitaInCorso = partitaInCorso && !check_board();
             info->game_started = partitaInCorso;
 
-            if(partitaInCorso){
-                printf("\n> Giocatore %d (PID %d) ha giocato la mossa %s.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn],
+            printf("\n> %s (PID %d) ha giocato la mossa %s.\n", info->usernames[matchinfo.turn], info->client_pid[matchinfo.turn],
                                                 info->move_made);
+
+            if(partitaInCorso){
                 matchinfo.turn = (matchinfo.turn == 0) ? 1 : 0;
                 semaphore_turn = (semaphore_turn == CLIENT1_SEM) ? CLIENT2_SEM : CLIENT1_SEM;
             }
         }
+
+        
+
+        if(info->winner == getpid())
+            printf("\n%s %s\n\n", GAME_ENDED, DRAW);
+        else {
+            int winner_index;
+            if(info->winner == info->client_pid[0])
+                winner_index = 0;
+            else winner_index = 1;
+
+            printf("\n%s Vince %s (PID %d).\n\n", GAME_ENDED, info->usernames[winner_index], info->winner);
+        }
+            
 
         // Partita terminata. Che sia in parità o che qualcuno abbia vinto, si svegliano i client per far rimuovere i loro IPC,
         // in modo che possano accedere ai semafori prima che essi vengano rimossi.
@@ -232,12 +247,12 @@ void init_data(char *argv[]){
     if(lobbyShmKey == -1)
         printError(FTOK_ERR);
 
-    int sems = semget(IPC_PRIVATE, 5, S_IRUSR | S_IWUSR);
+    int sems = semget(IPC_PRIVATE, 4, S_IRUSR | S_IWUSR);
     if(sems == -1){
         printError(SEM_ERR);
     }
 
-    short values[] = {1, 1, 0, 0, 0};
+    short values[] = {1, 0, 0, 0};
     union semun arg;
     arg.array = values;
     if(semctl(sems, 0, SETALL, arg) == -1){
@@ -267,6 +282,9 @@ void init_data(char *argv[]){
     if(lobbyDataId == -1){
         /** SENZA EXIT DA SEGMENTATION FAULT! (sul remove IPCs dei printError successivi)*/
         printf("%s\n", GAME_EXISTING_ERR);
+        if(semctl(sems, 0, IPC_RMID, 0) == -1){
+            printf("%s\n", SEM_DEL_ERR);
+        }
         exit(-1);
     }
 
@@ -476,7 +494,7 @@ void signal_handler(int sig){
             info->winner = info->client_pid[index];
 
             printf("\n%s", RESIGNED_GAME);
-            printf(" Vince a tavolino Giocatore %d (PID %d).\n\n", index + 1, info->client_pid[index]);
+            printf(" %s vince a tavolino (PID %d).\n\n", info->usernames[index], info->client_pid[index]);
             removeIPCs();
             exit(0);
         }

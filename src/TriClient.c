@@ -9,7 +9,6 @@
 #include <time.h>
 #include "data.h"
 #include <errno.h>
-#include <string.h>
 #include <termios.h>
 
 void printError(const char *);
@@ -51,6 +50,8 @@ int sigint_timestamp = 0;
 // Indice nell'array info->client_pid del giocatore
 int player;
 
+char username[USERNAME_DIM];
+
 // Indica se il client ha giocato una mossa (serve a gestire il Ctrl+C durante la partita).
 int move_played = 0;
 
@@ -61,18 +62,55 @@ sigset_t processSet;
 
 int main(int argc, char *argv[]){
 
+    if(argc < 2){
+        printf("%s", CLIENT_TERMINAL_CMD);
+        exit(0);
+    }
+
     child = -1;
     srand(time(NULL));
 
-    /** TODO: Limita inserimento argomenti! 
-     *        Metti i nomi a Giocatore e Computer.
+    int sem = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
+    if(sem == -1){
+        printError(SEM_ERR);
+    }
+
+    short values[] = {1};
+    union semun arg;
+    arg.array = values;
+    if(semctl(sem, 0, SETALL, arg) == -1){
+        printError(SEM_ERR);
+    }
+
+    /** TODO: Valuta se implementare il countdown per il timeout (vedi FAQ correlato).
     */
-    if(argc > 1){
-        if(argv[1][0] == '*' && argv[1][1] == '\0'){
+    if(argc == 3){
+        if(argv[2][0] == '*' && argv[2][1] == '\0'){
             child = fork();
             if(child == -1)
                 printError(NO_CHILD_CREATED_ERR);
+        } else {
+            printf("%s", CLIENT_TERMINAL_CMD);
+            exit(0);
         }
+    } else if(argc > 3) {
+        printf("%s", CLIENT_TERMINAL_CMD);
+        exit(0);
+    }
+
+    if(child != 0){
+        int i;
+        for(i = 0; argv[1][i] != '\0'; i++){
+            username[i] = argv[1][i];
+        }
+        username[i] = '\0';
+    } else {
+        char str[] = "Computer";
+        int i;
+        for(i = 0; str[i] != '\0'; i++){
+            username[i] = str[i];
+        }
+        username[i] = '\0';
     }
 
     set_sig_handlers();
@@ -85,14 +123,18 @@ int main(int argc, char *argv[]){
     init_data();
 
     // Comunica al server che ci si è collegati alla partita.
-    if(kill(server, SIGUSR1) == -1)
+    p(INFO_SEM, NOINT);
+    if(kill(server, SIGUSR1) == -1){
+        v(INFO_SEM, NOINT);
         printError(SIGUSR1_SEND_ERR);
+    }
+
+    v(INFO_SEM, NOINT);
 
     if(child != 0)
         printf("%s\n", WAITING);
 
     // Si aspetta di essere in due!
-    /** TODO: Controllo su pressione Ctrl+C in attesa. */
     int started;
     do {
         pause();
@@ -213,7 +255,15 @@ void set_sig_handlers(){
  * Stampa un messaggio d'errore. Prima di terminare, rimuove tutti gli IPC creati.
 */
 void printError(const char *msg){
-    printf("%s\n", msg);
+    char buff[256];
+
+    if(child == 0){
+        snprintf(buff, 255, "[PC] %s", msg);
+    } else {
+        snprintf(buff, 255, "%s", msg);
+    }
+
+    printf("%s\n", buff);
     removeIPCs();
     exit(EXIT_FAILURE);
 }
@@ -264,7 +314,7 @@ int p(int semnum, int no_int){
     */
 
     int code;
-    if((code = semop(info->semaphores, &p, 1)) == -1){
+    if((code = semop(semaphores, &p, 1)) == -1){
         // Vero errore solo se non si riceve EINTR ( = si è ricevuto un segnale)
         if(errno != EINTR)
             printError(P_ERR);
@@ -284,8 +334,10 @@ void v(int semnum, int no_int){
     v.sem_op = 1;
     v.sem_flg = 0;
 
-    if(semop(semaphores, &v, 1) == -1)
+    if(semop(semaphores, &v, 1) == -1){
+        printf("%d\n", errno);
         printError(V_ERR);
+    }
 
     // Si abilitano i segnali per attese su semafori in cui si erano disabilitati.
     if(no_int)
@@ -339,18 +391,23 @@ void move(){
     int seconds = info->timeout;
     int bytesRead = -1;
 
-    printf("\nTempo a disposizione: %d secondi.\n", seconds);
+    if(seconds > 0)
+        printf("\nTempo a disposizione: %d secondi.\n", seconds);
+    else
+        printf("\nTempo a disposizione illimitato.\n");
     
     snprintf(output, 50, "\r> Inserisci una coordinata %c: ", info->signs[player]);
     write(STDOUT_FILENO, output, 50);
 
-    /** NB:*/
-    // Fa in modo che l'alarm faccia chiudere la read(). Se in delta funziona senza meglio, sennò AMEN.
-    struct sigaction act;
-    act.sa_flags = ~SA_RESTART;
-    act.sa_handler = signal_handler;
-    sigaction(SIGALRM, &act, NULL);
-    alarm(seconds);
+    if(seconds > 0){
+        /** NB:*/
+        // Fa in modo che l'alarm faccia chiudere la read(). Se in delta funziona senza meglio, sennò AMEN.
+        struct sigaction act;
+        act.sa_flags = ~SA_RESTART;
+        act.sa_handler = signal_handler;
+        sigaction(SIGALRM, &act, NULL);
+        alarm(seconds);
+    }
 
     bytesRead = read(STDIN_FILENO, coord, 4);
 
@@ -411,7 +468,6 @@ void pc_move(){
 
 /**
  * Ottiene i dati inizializzati dal server riguardo la partita da giocare.
- * TODO: Metti bene i log a terminale del Computer.
 */
 void init_data(){
     key_t lobbyShmKey = ftok(PATH_TO_FILE, FTOK_KEY);
@@ -463,6 +519,13 @@ void init_data(){
         printError(GAME_EXISTING_ERR);
     } else {
         info->client_pid[info->num_clients] = getpid();
+
+        int i;
+        for(i = 0; username[i] != '\0'; i++){
+            info->usernames[info->num_clients][i] = username[i];
+        }
+        info->usernames[info->num_clients][i] = '\0';
+        
         info->num_clients++;
     }
 
@@ -557,7 +620,5 @@ void signal_handler(int sig){
             restore_terminal_echo();
 
         exit(0);
-    } else if(sig == SIGALRM){
-        
     }
 }
