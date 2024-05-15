@@ -84,6 +84,7 @@ int main(int argc, char *argv[]){
             if(info->client_pid[0] != 0 && info->client_pid[1] != 0)
                 gameIsReady = 1;
 
+            // Calcola cambiamenti per mostrare chi si è connesso alla partita
             if(info->num_clients > matchinfo.players_ready){
                 int index = 0;
                 if(info->client_pid[1] != 0)
@@ -144,11 +145,14 @@ int main(int argc, char *argv[]){
             }
         }
 
+        // Partita terminata. Che sia in parità o che qualcuno abbia vinto, si svegliano i client per far rimuovere i loro IPC,
+        // in modo che possano accedere ai semafori prima che essi vengano rimossi.
         
-
+        // Parità (per comunicarlo si dice che vince il server)
         if(info->winner == getpid())
             printf("\n%s %s\n\n", GAME_ENDED, DRAW);
         else {
+            // Vittoria di un client
             int winner_index;
             if(info->winner == info->client_pid[0])
                 winner_index = 0;
@@ -156,10 +160,6 @@ int main(int argc, char *argv[]){
 
             printf("\n%s Vince %s (PID %d).\n\n", GAME_ENDED, info->usernames[winner_index], info->winner);
         }
-            
-
-        // Partita terminata. Che sia in parità o che qualcuno abbia vinto, si svegliano i client per far rimuovere i loro IPC,
-        // in modo che possano accedere ai semafori prima che essi vengano rimossi.
         
         v(CLIENT1_SEM, WITHINT);
         p(SERVER, WITHINT);
@@ -346,7 +346,7 @@ void init_board(){
 
 /**
  * Controlla se la partita è finita. In qualunque situazione terminale, ritorna 1,
- * altrimenti 0 se la partita può continuare.
+ * altrimenti 0 se la partita può continuare. Se la partita è finita, info->winner indica il risultato.
 */
 int check_board(){
     int isDraw = 1;
@@ -504,7 +504,6 @@ void signal_handler(int sig){
         }
 
         v(INFO_SEM, NOINT);
-
         
     }
 }

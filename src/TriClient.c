@@ -25,6 +25,11 @@ void restore_terminal_echo();
 int p(int, int);
 void v(int, int);
 
+/**
+ * TODO: Feedback su mossa giocata. Giusta/sbagliata etc
+ *       Eventuale rimozione dei while che gestirebbero il countdown live.
+*/
+
 // Attributi del terminale
 struct termios termios;
 
@@ -70,7 +75,9 @@ int main(int argc, char *argv[]){
     child = -1;
     srand(time(NULL));
 
-    /** TODO: Valuta se implementare il countdown per il timeout (vedi FAQ correlato).
+    /**
+     * Si controllano i parametri. Se si gioca contro il computer, si genera il processo figlio (sarà lui il computer).
+     * Per questo motivo, molte delle stampe a video saranno impedite al computer.
     */
     if(argc == 3){
         if(argv[2][0] == '*' && argv[2][1] == '\0'){
@@ -86,6 +93,7 @@ int main(int argc, char *argv[]){
         exit(0);
     }
 
+    // Si imposta il proprio username
     if(child != 0){
         int i;
         for(i = 0; argv[1][i] != '\0'; i++){
@@ -111,6 +119,9 @@ int main(int argc, char *argv[]){
     init_data();
 
     // Comunica al server che ci si è collegati alla partita.
+    // Lo si fa con P e V per permettere al server di gestire l'arrivo di un client uno alla volta,
+    // sennò utente e computer potrebbero essere troppo veloci. Il programma funziona comunque, ma il server non stampa
+    // l'arrivo di entrambi.
     p(INFO_SEM, NOINT);
     if(kill(server, SIGUSR1) == -1){
         v(INFO_SEM, NOINT);
@@ -123,6 +134,7 @@ int main(int argc, char *argv[]){
         printf("%s\n", WAITING);
 
     // Si aspetta di essere in due!
+    // Necessario il while per gestire il doppio Ctrl+C.
     int started;
     do {
         pause();
@@ -194,6 +206,7 @@ int main(int argc, char *argv[]){
 
             v(SERVER, WITHINT);
         } else {
+            // La partita è terminata
             if(child != 0){
                 printf("\n%s", GAME_ENDED);
                 if(info->winner == getpid())
@@ -231,16 +244,12 @@ void set_sig_handlers(){
 
     if(signal(SIGHUP, signal_handler) == SIG_ERR)
         printError(SIGHUP_HANDLER_ERR);
-
-    /*
-    if(signal(SIGALRM, signal_handler) == SIG_ERR)
-        printError(SIGALRM_HANDLER_ERR);
-    */
     
 }
 
 /**
  * Stampa un messaggio d'errore. Prima di terminare, rimuove tutti gli IPC creati.
+ * Se a stampare è il computer, aggiunge [PC] ad inizio messaggio.
 */
 void printError(const char *msg){
     char buff[256];
@@ -369,13 +378,14 @@ void print_board(){
 }
 
 /**
- * Esegue una mossa. Si suppone che ad inserimento errato equivalga concedere il turno ???.
+ * Esegue una mossa. Si suppone che ad inserimento errato o scandere del timeout equivalga concedere il turno.
  * TODO: Dopo Ctrl+C si vedono i malanni.
 */
 void move(){
     char coord[4] = {0};
     char output[51] = {0};
 
+    // Numero di secondi disponibili
     int seconds = info->timeout;
     int bytesRead = -1;
 
@@ -387,6 +397,7 @@ void move(){
     snprintf(output, 50, "\r> Inserisci una coordinata %c: ", info->signs[player]);
     write(STDOUT_FILENO, output, 50);
 
+    // Se seconds == 0 non bisogna impostare un alarm. Anche alarm(0) va bene però cosi sembra più liscio.
     if(seconds > 0){
         /** NB:*/
         // Fa in modo che l'alarm faccia chiudere la read(). Se in delta funziona senza meglio, sennò AMEN.
@@ -401,14 +412,8 @@ void move(){
 
     move_played = 1;
 
-    if(bytesRead <= 0){
-        info->move_made[0] = 'N';
-        info->move_made[1] = 'V';
-        info->move_made[2] = '\0';
-        return;
-    }
-
-    if(coord[2] != '\n' || !(coord[1] >= '1' && coord[1] <= '3') || 
+    // Controllo sulla coordinata in input
+    if(bytesRead <= 0 || coord[2] != '\n' || !(coord[1] >= '1' && coord[1] <= '3') || 
         !((coord[0] >= 'a' && coord[0] <= 'c') || (coord[0] >= 'A' && coord[0] <= 'C'))){
             info->move_made[0] = 'N';
             info->move_made[1] = 'V';
@@ -418,6 +423,7 @@ void move(){
 
     coord[2] = '\0';
 
+    // Si calcola la coordinata inserita
     info->move_made[0] = coord[0];
     info->move_made[1] = coord[1];
     info->move_made[2] = '\0';
@@ -508,6 +514,7 @@ void init_data(){
     } else {
         info->client_pid[info->num_clients] = getpid();
 
+        // Aggiunta del proprio username
         int i;
         for(i = 0; username[i] != '\0'; i++){
             info->usernames[info->num_clients][i] = username[i];
@@ -524,15 +531,23 @@ void init_data(){
 }
 
 /**
- * Rimuove il client dalla partita, ovvero lo toglie dall'array di client collegati.
+ * Rimuove il client dalla partita, ovvero lo toglie dall'array di client collegati e dagli username.
 */
 void remove_pid_from_game(){
     p(INFO_SEM, NOINT);
 
+    int index;
     if(info->client_pid[0] == getpid())
-        info->client_pid[0] = 0;
+        index = 0;
     else if(info->client_pid[1] == getpid())
-        info->client_pid[1] = 0;
+        index = 1;
+
+    info->client_pid[index] = 0;
+
+    // Si toglie anche il suo username
+    for(int i = 0; info->usernames[index][i] != '\0'; i++){
+        info->usernames[index][i] = '\0';
+    }
 
     info->num_clients--;
 
