@@ -132,7 +132,8 @@ int main(int argc, char *argv[]){
             info->game_started = partitaInCorso;
 
             if(partitaInCorso){
-                printf("\n> Giocatore %d con (PID %d) ha giocato una mossa.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn]);
+                printf("\n> Giocatore %d con (PID %d) ha giocato la mossa %s.\n", matchinfo.turn + 1, info->client_pid[matchinfo.turn],
+                                                info->move_made);
                 matchinfo.turn = (matchinfo.turn == 0) ? 1 : 0;
                 semaphore_turn = (semaphore_turn == CLIENT1_SEM) ? CLIENT2_SEM : CLIENT1_SEM;
             }
@@ -334,49 +335,45 @@ int check_board(){
         }
     }
 
-    if(!isDraw){
+    int ended = 0;
+    char winner_sign = ' ';
 
-        int ended = 0;
-        char winner_sign = ' ';
-
-        for(int i = 0; i < 3; i++){
-            if(board[(3 * i)] == board[(3 * i) + 1] && board[(3 * i) + 1] == board[(3 * i) + 2] && board[(3 * i)] != ' '){
-                ended = 1;
-                winner_sign = board[(3 * i)];
-            }
-        }
-
-        for(int i = 0; i < 3; i++){
-            if(board[i] == board[3 + i] && board[3 + i] == board[6 + i] && board[i] != ' '){
-                ended = 1;
-                winner_sign = board[i];
-            }
-        }
-
-        if(board[0] == board[4] && board[4] == board[8] && board[0] != ' '){
+    for(int i = 0; i < 3; i++){
+        if(board[(3 * i)] == board[(3 * i) + 1] && board[(3 * i) + 1] == board[(3 * i) + 2] && board[(3 * i)] != ' '){
             ended = 1;
-            winner_sign = board[0];
+            winner_sign = board[(3 * i)];
         }
+    }
 
-        if(board[2] == board[4] && board[4] == board[6] && board[2] != ' '){
+    for(int i = 0; i < 3; i++){
+        if(board[i] == board[3 + i] && board[3 + i] == board[6 + i] && board[i] != ' '){
             ended = 1;
-            winner_sign = board[2];
+            winner_sign = board[i];
         }
+    }
 
-        if(ended){
-            int winner_player;
-            if(winner_sign == info->signs[0])
-                winner_player = 0;
-            else
-                winner_player = 1;
-            info->winner = info->client_pid[winner_player];
-        }
-        
-        return ended;
+    if(board[0] == board[4] && board[4] == board[8] && board[0] != ' '){
+        ended = 1;
+        winner_sign = board[0];
+    }
 
-    } else {
+    if(board[2] == board[4] && board[4] == board[6] && board[2] != ' '){
+        ended = 1;
+        winner_sign = board[2];
+    }
+
+    if(ended) {
+        int winner_player;
+        if(winner_sign == info->signs[0])
+            winner_player = 0;
+        else
+            winner_player = 1;
+        info->winner = info->client_pid[winner_player];
+    } else if (isDraw){
         info->winner = info->server_pid;
         return isDraw;
+    } else {
+        return 0;
     }
 }
 

@@ -232,8 +232,8 @@ void v(int semnum, int no_int){
  * Stampa la matrice di gioco.
 */
 void print_board(){
-    printf("%s%s\n", FIELD_TAB, CLEAR);
-    printf(" %s1   2   3\n", BOARD_TAB);
+    printf("%s\n", CLEAR);
+    printf(" %s%s1   2   3\n", FIELD_TAB, BOARD_TAB);
     printf(" %s%s  .   .  \n", FIELD_TAB, BOARD_TAB);
 
     char righe[] = {'A', 'B', 'C'};
@@ -268,14 +268,25 @@ void print_board(){
  * TODO: Migliore acquisizione dati (interfaccia).
 */
 void move(){
-    char coord[4];
-    printf("> Inserisci una coordinata %c: ", info->signs[player]);
-    scanf("%3s", coord);
+    char coord[4] = {0};
+    char output[31];
+    snprintf(output, 31, "> Inserisci una coordinata %c: ", info->signs[player]);
+    write(STDOUT_FILENO, output, 31);
+    read(STDIN_FILENO, coord, 3);
 
-    if(coord[2] != '\0' || (coord[1] < '1' && coord[1] > '3') || 
-        ((coord[0] < 'a' || coord[0] > 'c') && (coord[0] < 'A' || coord[0] > 'C'))){
-        return;
+    if(coord[2] != '\n' || (coord[1] < '1' && coord[1] > '3') || 
+        !((coord[0] >= 'a' && coord[0] <= 'c') || (coord[0] >= 'A' && coord[0] <= 'C'))){
+            info->move_made[0] = 'N';
+            info->move_made[1] = 'V';
+            info->move_made[2] = '\0';
+            return;
     }
+
+    coord[2] = '\0';
+
+    info->move_made[0] = coord[0];
+    info->move_made[1] = coord[1];
+    info->move_made[2] = '\0';
 
     int colonna = coord[1] - '1';
     int riga;
