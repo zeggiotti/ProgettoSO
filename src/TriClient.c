@@ -26,10 +26,6 @@ void restore_terminal_echo();
 int p(int, int);
 void v(int, int);
 
-/**
- * TODO: Eventuale rimozione dei while che gestirebbero il countdown live.
-*/
-
 // Attributi del terminale
 struct termios termios;
 
@@ -192,10 +188,7 @@ int main(int argc, char *argv[]){
         if(partitaInCorso){
             // La partita non è finita. Si procede.
             if(child != 0){
-                /** FAQ: Se non si mette il countdown questo while è necessario ??? */
-                do {
-                    move();
-                } while(move_played == 0);
+                move();
             } else {
                 pc_move();
             }
