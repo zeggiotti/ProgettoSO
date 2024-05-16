@@ -26,7 +26,9 @@ void restore_terminal_echo();
 int p(int, int);
 void v(int, int);
 
-/** TODO: Computer arriva troppo velocemente. */
+/** TODO: Computer arriva troppo velocemente. 
+ * considera mossa non valida le mosse su caselle piene
+*/
 
 // Attributi del terminale
 struct termios termios;
@@ -83,9 +85,7 @@ int main(int argc, char *argv[]){
     */
     if(argc == 3){
         if(argv[2][0] == '*' && argv[2][1] == '\0'){
-            child = fork();
-            if(child == -1)
-                printError(NO_CHILD_CREATED_ERR);
+            // Ci si deve sdoppiare
         } else {
             printf("%s", CLIENT_TERMINAL_CMD);
             exit(0);
@@ -102,38 +102,84 @@ int main(int argc, char *argv[]){
             username[i] = argv[1][i];
         }
         username[i] = '\0';
-    } else {
-        char str[] = "Computer";
-        int i;
-        for(i = 0; str[i] != '\0'; i++){
-            username[i] = str[i];
-        }
-        username[i] = '\0';
     }
 
     set_sig_handlers();
 
     tcgetattr(STDIN_FILENO, &termios);
 
-    init_data();
+    /**
+     * Questo blocco serve per sdoppiarsi nel caso di esecuzione con \*.
+     * Se ci si deve sdoppiare lo si fa e dopo solo il processo dell'utente inserirà nel server le informazioni
+     * di entrambi i client. Altrimenti si inizializzano i dati normalmente.
+    */
+    if(argc == 3){
+        if(argv[2][0] == '*' && argv[2][1] == '\0'){
+            child = fork();
+            if(child == -1)
+                printError(NO_CHILD_CREATED_ERR);
 
-    if(child != 0)
+            init_data();
+
+            // Solo il client effettua l'inizializzazione e comunica al server di essersi sdoppiato.
+
+            if(child != 0){
+                p(INFO_SEM, NOINT);
+
+                if(info->num_clients > 0){
+                    if(kill(child, SIGTERM) == -1)
+                        printError(SIGTERM_SEND_ERR);
+                    v(INFO_SEM, NOINT);
+                    printError(GAME_EXISTING_ERR);
+                } else {
+                    info->client_pid[0] = getpid();
+                    info->client_pid[1] = child;
+
+                    // Aggiunta del proprio username
+                    int i;
+                    for(i = 0; username[i] != '\0'; i++){
+                        info->usernames[0][i] = username[i];
+                    }
+                    info->usernames[0][i] = '\0';
+
+                    char str[] = "Computer";
+                    for(i = 0; str[i] != '\0'; i++){
+                        info->usernames[1][i] = str[i];
+                    }
+                    info->usernames[1][i] = '\0';
+                    
+                    info->num_clients = 2;
+                }
+
+                v(INFO_SEM, NOINT);
+            } else {
+                char str[] = "Computer";
+                int i;
+                for(i = 0; str[i] != '\0'; i++){
+                    username[i] = str[i];
+                }
+                username[i] = '\0';
+            }
+
+        } else {
+            init_data();
+        }
+    } else {
+        init_data();
+    }
+    
+
+    if(child != 0){
         printf("%s", CLEAR);
 
-    // Comunica al server che ci si è collegati alla partita.
-    // Lo si fa con P e V per permettere al server di gestire l'arrivo di un client uno alla volta,
-    // sennò utente e computer potrebbero essere troppo veloci. Il programma funziona comunque, ma il server non stampa
-    // l'arrivo di entrambi.
-    p(INFO_SEM, NOINT);
-    if(kill(server, SIGUSR1) == -1){
-        v(INFO_SEM, NOINT);
-        printError(SIGUSR1_SEND_ERR);
-    }
-
-    v(INFO_SEM, NOINT);
-
-    if(child != 0)
+        // Comunica al server che ci si è collegati alla partita.
+        if(kill(server, SIGUSR1) == -1){
+            printError(SIGUSR1_SEND_ERR);
+        }
+        
         printf("%s\n", WAITING);
+    }
+    
 
     // Si aspetta di essere in due!
     // Necessario il while per gestire il doppio Ctrl+C.
@@ -547,21 +593,23 @@ void init_data(){
         printError(SHMAT_ERR);
     }
 
-    if(info->num_clients > 1){
-        if(semop(info->semaphores, &v, 1) == -1)
-            printError(V_ERR);
-        printError(GAME_EXISTING_ERR);
-    } else {
-        info->client_pid[info->num_clients] = getpid();
+    if(child == -1){
+        if(info->num_clients > 1){
+            if(semop(info->semaphores, &v, 1) == -1)
+                printError(V_ERR);
+            printError(GAME_EXISTING_ERR);
+        } else {
+            info->client_pid[info->num_clients] = getpid();
 
-        // Aggiunta del proprio username
-        int i;
-        for(i = 0; username[i] != '\0'; i++){
-            info->usernames[info->num_clients][i] = username[i];
+            // Aggiunta del proprio username
+            int i;
+            for(i = 0; username[i] != '\0'; i++){
+                info->usernames[info->num_clients][i] = username[i];
+            }
+            info->usernames[info->num_clients][i] = '\0';
+            
+            info->num_clients++;
         }
-        info->usernames[info->num_clients][i] = '\0';
-        
-        info->num_clients++;
     }
 
     if(semop(semaphores, &v, 1) == -1)

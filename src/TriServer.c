@@ -21,10 +21,6 @@ void set_sig_handlers();
 int p(int, int);
 void v(int, int);
 
-/**
- * TODO: Proponi ulteriori giocate.
-*/
-
 // Id del seg. di memoria condivisa che contiene i dati della partita.
 int lobbyDataId = 0;
 
@@ -86,11 +82,11 @@ int main(int argc, char *argv[]){
 
             // Calcola cambiamenti per mostrare chi si è connesso alla partita
             if(info->num_clients > matchinfo.players_ready){
-                int index = 0;
-                if(info->client_pid[1] != 0)
-                    index = 1;
-                matchinfo.players_ready++;
-                printf("\n> %s (PID %d) si è collegato (%d/2).\n", info->usernames[index], info->client_pid[index], info->num_clients);
+                while(info->num_clients > matchinfo.players_ready){
+                    printf("\n> %s (PID %d) si è collegato (%d/2).\n", info->usernames[matchinfo.players_ready], 
+                                                                        info->client_pid[matchinfo.players_ready], info->num_clients);
+                    matchinfo.players_ready++;
+                }
             } else if(info->num_clients < matchinfo.players_ready){
                 matchinfo.players_ready--;
             }
