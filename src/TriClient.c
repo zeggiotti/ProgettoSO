@@ -27,8 +27,7 @@ int p(int, int);
 void v(int, int);
 
 /**
- * TODO: Feedback su mossa giocata. Giusta/sbagliata etc
- *       Eventuale rimozione dei while che gestirebbero il countdown live.
+ * TODO: Eventuale rimozione dei while che gestirebbero il countdown live.
 */
 
 // Attributi del terminale
