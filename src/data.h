@@ -11,7 +11,7 @@
 #define WITHINT 0
 #define NOINT 1
 
-#define MAX_SECONDS 1   // Numero massimo di secondi che devono passare tra un Ctrl+C e l'altro.
+#define MAX_SECONDS 2   // Numero massimo di secondi che devono passare tra un Ctrl+C e l'altro.
 
 #define USERNAME_DIM 64
 

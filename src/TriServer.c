@@ -63,11 +63,11 @@ int main(int argc, char *argv[]){
         exit(0);
     } else {
 
-        printf("%s", CLEAR);
-
         set_sig_handlers();
 
         init_data(argv);
+
+        printf("%s", CLEAR);
 
         printf("%s\n", WAITING_FOR_PLAYERS);
 
@@ -476,7 +476,7 @@ void signal_handler(int sig){
             exit(0);
 
         } else {
-            sigint_timestamp = now;
+            sigint_timestamp = time(NULL);
             printf("%s\nPer terminare l'esecuzione, premere Ctrl+C un'altra volta entro %d secondi.\n", BLANK_LINE, MAX_SECONDS);
         }
 
@@ -489,14 +489,8 @@ void signal_handler(int sig){
             int index;
 
             if(info->client_pid[0] == 0){
-                if(info->client_pid[1] != 0)
-                    if(kill(info->client_pid[1], SIGTERM) == -1)
-                        printError(SIGTERM_SEND_ERR);
                 index = 1;
             } else if (info->client_pid[1] == 0){
-                if(info->client_pid[0] != 0)
-                    if(kill(info->client_pid[0], SIGTERM) == -1)
-                        printError(SIGTERM_SEND_ERR);
                 index = 0;
             }
             
@@ -504,6 +498,10 @@ void signal_handler(int sig){
 
             printf("\n%s", RESIGNED_GAME);
             printf(" %s vince a tavolino (PID %d).\n\n", info->usernames[index], info->client_pid[index]);
+            
+            if(kill(info->client_pid[index], SIGTERM) == -1)
+                printError(SIGTERM_SEND_ERR);
+            
             removeIPCs();
             exit(0);
         }
