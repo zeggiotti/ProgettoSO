@@ -136,7 +136,12 @@ int main(int argc, char *argv[]){
             partitaInCorso = partitaInCorso && !check_board();
             info->game_started = partitaInCorso;
 
-            printf("\n> %s (PID %d) ha giocato la mossa %s.\n", info->usernames[matchinfo.turn], info->client_pid[matchinfo.turn],
+            if(info->move_made[0] == 'N' && info->move_made[1] == 'V')
+                printf("\n> %s (PID %d) ha giocato una mossa non valida.\n", info->usernames[matchinfo.turn], info->client_pid[matchinfo.turn]);
+            else if(info->move_made[0] == 'T' && info->move_made[1] == 'O')
+                printf("\n> %s (PID %d) non ha giocato una mossa entro lo scadere dei secondi.\n", info->usernames[matchinfo.turn], info->client_pid[matchinfo.turn]);
+            else
+                printf("\n> %s (PID %d) ha giocato la mossa %s.\n", info->usernames[matchinfo.turn], info->client_pid[matchinfo.turn],
                                                 info->move_made);
 
             if(partitaInCorso){

@@ -14,6 +14,7 @@
 void printError(const char *);
 void init_data();
 void print_board();
+void print_move_feedback();
 void move();
 void pc_move();
 void signal_handler(int);
@@ -55,7 +56,10 @@ int sigint_timestamp = 0;
 // Indice nell'array info->client_pid del giocatore
 int player;
 
+// Username del giocatore
 char username[USERNAME_DIM];
+
+int timeout_over = 0;
 
 // Indica se il client ha giocato una mossa (serve a gestire il Ctrl+C durante la partita).
 int move_played = 0;
@@ -201,6 +205,7 @@ int main(int argc, char *argv[]){
 
             if(child != 0){
                 print_board();
+                print_move_feedback();
                 remove_terminal_echo();
             }
 
@@ -378,6 +383,18 @@ void print_board(){
 }
 
 /**
+ * Stampa a video un feedback sul turno passato.
+*/
+void print_move_feedback(){
+    if(info->move_made[0] == 'N' && info->move_made[1] == 'V')
+        printf("Hai giocato una mossa non valida.\n");
+    else if(info->move_made[0] == 'T' && info->move_made[1] == 'O')
+        printf("Non hai giocato una mossa entro lo scadere dei secondi.\n");
+    else
+        printf("Hai giocato la mossa %s.\n", info->move_made);
+}
+
+/**
  * Esegue una mossa. Si suppone che ad inserimento errato o scandere del timeout equivalga concedere il turno.
  * TODO: Dopo Ctrl+C si vedono i malanni.
 */
@@ -397,6 +414,8 @@ void move(){
     snprintf(output, 50, "\r> Inserisci una coordinata %c: ", info->signs[player]);
     write(STDOUT_FILENO, output, 50);
 
+    timeout_over = 0;
+
     // Se seconds == 0 non bisogna impostare un alarm. Anche alarm(0) va bene però cosi sembra più liscio.
     if(seconds > 0){
         /** NB:*/
@@ -411,6 +430,13 @@ void move(){
     bytesRead = read(STDIN_FILENO, coord, 4);
 
     move_played = 1;
+
+    if(timeout_over){
+        info->move_made[0] = 'T';
+        info->move_made[1] = 'O';
+        info->move_made[2] = '\0';
+        return;
+    }
 
     // Controllo sulla coordinata in input
     if(bytesRead <= 0 || coord[2] != '\n' || !(coord[1] >= '1' && coord[1] <= '3') || 
@@ -623,5 +649,7 @@ void signal_handler(int sig){
             restore_terminal_echo();
 
         exit(0);
+    } else if(sig == SIGALRM) {
+        timeout_over = 1;
     }
 }
