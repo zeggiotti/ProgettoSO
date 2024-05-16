@@ -26,8 +26,7 @@ void restore_terminal_echo();
 int p(int, int);
 void v(int, int);
 
-/** TODO: Computer arriva troppo velocemente. 
- * considera mossa non valida le mosse su caselle piene
+/** TODO: Considera mossa non valida le mosse su caselle piene
 */
 
 // Attributi del terminale
@@ -524,6 +523,12 @@ void move(){
     
     if(board[(riga * 3) + colonna] == ' ')
         board[(riga * 3) + colonna] = info->signs[player];
+    else {
+        info->move_made[0] = 'N';
+        info->move_made[1] = 'V';
+        info->move_made[2] = '\0';
+        return;
+    }
 }
 
 /**
