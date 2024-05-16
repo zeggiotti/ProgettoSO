@@ -26,9 +26,6 @@ void restore_terminal_echo();
 int p(int, int);
 void v(int, int);
 
-/** TODO: Considera mossa non valida le mosse su caselle piene
-*/
-
 // Attributi del terminale
 struct termios termios;
 
