@@ -84,7 +84,7 @@ struct lobby_data {
     int semaphores;         // Id del set di semafori.
     int game_started;       // (Booleano) indica se la partita è iniziata o meno.
     pid_t winner;
-    char move_made[3];          // Indica la mossa giocata sulla matrice.
+    char move_made[3];      // Indica la mossa giocata sulla matrice.
 };
 
 union semun {
