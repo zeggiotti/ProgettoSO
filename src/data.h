@@ -85,6 +85,7 @@ struct lobby_data {
     int game_started;       // (Booleano) indica se la partita è iniziata o meno.
     pid_t winner;
     char move_made[3];      // Indica la mossa giocata sulla matrice.
+    int automtic_match;     // Indica se la partita deve essere giocata in modo automatico da un client
 };
 
 union semun {

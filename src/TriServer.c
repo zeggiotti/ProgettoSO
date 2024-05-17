@@ -13,6 +13,7 @@
 
 void printError(const char *);
 void init_data();
+void split_into_computer();
 void init_board();
 int check_board();
 void removeIPCs();
@@ -73,7 +74,7 @@ int main(int argc, char *argv[]){
         int gameIsReady = 0;
         do {
             
-            pause();
+            while(p(SERVER, WITHINT) == -1);
             
             p(INFO_SEM, NOINT);
                 
@@ -87,6 +88,8 @@ int main(int argc, char *argv[]){
                                                                         info->client_pid[matchinfo.players_ready], info->num_clients);
                     matchinfo.players_ready++;
                 }
+                if(info->automtic_match && info->num_clients == 1)
+                    split_into_computer();
             } else if(info->num_clients < matchinfo.players_ready){
                 matchinfo.players_ready--;
             }
@@ -108,11 +111,9 @@ int main(int argc, char *argv[]){
 
         // La partita è pronta. Lo si comunica ai client facendo riprendere la loro esecuzione, i quali visualizzano la matrice
         // a schermo e aspettano.
-        if(kill(info->client_pid[0], SIGUSR1) == -1)
-            printError(SIGUSR1_SEND_ERR);
+        v(CLIENT1_SEM, WITHINT);
 
-        if(kill(info->client_pid[1], SIGUSR1) == -1)
-            printError(SIGUSR1_SEND_ERR);
+        v(CLIENT2_SEM, WITHINT);
 
         v(INFO_SEM, NOINT);
 
@@ -244,6 +245,51 @@ void v(int semnum, int no_int){
         sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
+void pb(int n){
+    int i = 31;
+    while (i > 0) {
+        if (n & 1)
+            printf("1");
+        else
+            printf("0");
+
+        n >>= 1;
+        i--;
+    }
+    printf("\n");
+}
+
+void split_into_computer(){
+    pid_t child = fork();
+
+    /**
+     * Non va bene nel caso di errore di execl
+    */
+    if(child == 0){
+        // BISOGNA METTERE LA MASCHERA A QUELLA VECCHIA DEL SERVER (OVVERO QUELLA PRIMA DELLA P)
+        sigprocmask(SIG_SETMASK, &processSet, NULL);
+
+        char *args[] = {"bin/TriClient", "Computer", NULL};
+        execvp("bin/TriClient", args);
+
+        p(INFO_SEM, NOINT);
+
+        info->winner = info->server_pid;
+
+        if(info->client_pid[0] != 0)
+            if(kill(info->client_pid[0], SIGTERM) == -1)
+                    printError(SIGTERM_SEND_ERR);
+
+        if(info->client_pid[1] != 0)
+            if(kill(info->client_pid[1], SIGTERM) == -1)
+                printError(SIGTERM_SEND_ERR);
+
+        v(INFO_SEM, NOINT);
+
+        printError(NO_CHILD_CREATED_ERR);
+    }
+}
+
 /**
  * Inizializza i dati necessari a giocare, ovvero i dati riguardanti client, server e la generale gestione della partita (lobby).
 */
@@ -309,6 +355,7 @@ void init_data(char *argv[]){
     info->server_pid = getpid();
     info->client_pid[0] = 0;
     info->client_pid[1] = 0;
+    info->automtic_match = 0;
 
     info->num_clients = 0;
     info->timeout = atoi(argv[1]);
@@ -500,6 +547,8 @@ void signal_handler(int sig){
             
             removeIPCs();
             exit(0);
+        } else {
+            matchinfo.players_ready--;
         }
 
         v(INFO_SEM, NOINT);

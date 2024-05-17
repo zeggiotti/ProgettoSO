@@ -60,7 +60,7 @@ int timeout_over = 0;
 // Indica se il client ha giocato una mossa (serve a gestire il Ctrl+C durante la partita).
 int move_played = 0;
 
-pid_t child;
+int is_computer = 0;
 
 // Set di segnali ricevibili dal processo.
 sigset_t processSet;
@@ -72,8 +72,16 @@ int main(int argc, char *argv[]){
         exit(0);
     }
 
-    child = -1;
     srand(time(NULL));
+
+    // Si imposta il proprio username
+    int i;
+    for(i = 0; argv[1][i] != '\0'; i++){
+        username[i] = argv[1][i];
+    }
+    username[i] = '\0';
+
+    init_data();
 
     /**
      * Si controllano i parametri. Se si gioca contro il computer, si genera il processo figlio (sarà lui il computer).
@@ -82,22 +90,16 @@ int main(int argc, char *argv[]){
     if(argc == 3){
         if(argv[2][0] == '*' && argv[2][1] == '\0'){
             // Ci si deve sdoppiare
+            p(INFO_SEM, NOINT);
+            info->automtic_match = 1;
+            v(INFO_SEM, NOINT);
         } else {
             printf("%s", CLIENT_TERMINAL_CMD);
-            exit(0);
+            exit(EXIT_FAILURE);
         }
     } else if(argc > 3) {
         printf("%s", CLIENT_TERMINAL_CMD);
-        exit(0);
-    }
-
-    // Si imposta il proprio username
-    if(child != 0){
-        int i;
-        for(i = 0; argv[1][i] != '\0'; i++){
-            username[i] = argv[1][i];
-        }
-        username[i] = '\0';
+        exit(EXIT_FAILURE);
     }
 
     set_sig_handlers();
@@ -109,97 +111,32 @@ int main(int argc, char *argv[]){
      * Se ci si deve sdoppiare lo si fa e dopo solo il processo dell'utente inserirà nel server le informazioni
      * di entrambi i client. Altrimenti si inizializzano i dati normalmente.
     */
-    if(argc == 3){
-        if(argv[2][0] == '*' && argv[2][1] == '\0'){
-            child = fork();
-            if(child == -1)
-                printError(NO_CHILD_CREATED_ERR);
-
-            init_data();
-
-            // Solo il client effettua l'inizializzazione e comunica al server di essersi sdoppiato.
-
-            if(child != 0){
-                p(INFO_SEM, NOINT);
-
-                if(info->num_clients > 0){
-                    if(kill(child, SIGTERM) == -1)
-                        printError(SIGTERM_SEND_ERR);
-                    v(INFO_SEM, NOINT);
-                    printError(GAME_EXISTING_ERR);
-                } else {
-                    info->client_pid[0] = getpid();
-                    info->client_pid[1] = child;
-
-                    // Aggiunta del proprio username
-                    int i;
-                    for(i = 0; username[i] != '\0'; i++){
-                        info->usernames[0][i] = username[i];
-                    }
-                    info->usernames[0][i] = '\0';
-
-                    char str[] = "Computer";
-                    for(i = 0; str[i] != '\0'; i++){
-                        info->usernames[1][i] = str[i];
-                    }
-                    info->usernames[1][i] = '\0';
-                    
-                    info->num_clients = 2;
-                }
-
-                v(INFO_SEM, NOINT);
-            } else {
-                char str[] = "Computer";
-                int i;
-                for(i = 0; str[i] != '\0'; i++){
-                    username[i] = str[i];
-                }
-                username[i] = '\0';
-            }
-
-        } else {
-            init_data();
-        }
-    } else {
-        init_data();
-    }
     
-
-    if(child != 0){
+    if(!is_computer)
         printf("%s", CLEAR);
-
-        // Comunica al server che ci si è collegati alla partita.
-        if(kill(server, SIGUSR1) == -1){
-            printError(SIGUSR1_SEND_ERR);
-        }
-        
-        printf("%s\n", WAITING);
-    }
-    
-
-    // Si aspetta di essere in due!
-    // Necessario il while per gestire il doppio Ctrl+C.
-    int started;
-    do {
-        pause();
-
-        p(INFO_SEM, NOINT);
-        started = info->game_started;
-        v(INFO_SEM, NOINT);
-    } while (!started);
-
-    if(child != 0)
-        printf("\n%s\n", GAME_STARTING);
-
-    p(INFO_SEM, NOINT);
 
     // Si va a scoprire il numero di giocatore
     if(info->client_pid[0] == getpid())
         player = 0;
     else
         player = 1;
+    int my_semaphore = (player == 0) ? CLIENT1_SEM : CLIENT2_SEM;
 
-    int i;
+    // Comunica al server che ci si è collegati alla partita.
+    v(SERVER, WITHINT);
+    
+    if(!is_computer)
+        printf("%s\n", WAITING);
+
+    // Si aspetta di essere in due!
+    // Necessario il while per gestire il doppio Ctrl+C.
+    while(p(my_semaphore, WITHINT) == -1);
+
+    if(!is_computer)
+        printf("\n%s\n", GAME_STARTING);
+
+    p(INFO_SEM, NOINT);
+
     for(i = 0; info->usernames[!player][i] != '\0'; i++){
         opponent[i] = info->usernames[!player][i];
     }
@@ -211,25 +148,22 @@ int main(int argc, char *argv[]){
     v(INFO_SEM, NOINT);
 
     // Stampa la matrice vuota
-    if(child != 0){
+    if(!is_computer){
         print_board();
         remove_terminal_echo();
     }
-
-    int my_semaphore = (player == 0) ? CLIENT1_SEM : CLIENT2_SEM;
 
     while(partitaInCorso) {
         while(p(my_semaphore, WITHINT) == -1);
 
         // Svuota il buffer del terminale e ignora tutti i caratteri inseriti.
-        if(child != 0){
+        if(!is_computer){
             tcflush(STDIN_FILENO, TCIFLUSH);
             restore_terminal_echo();
-        }
 
-        // In ogni caso si stampa lo stato della partita
-        if(child != 0)
+            // In ogni caso si stampa lo stato della partita
             print_board();
+        }
 
         p(INFO_SEM, NOINT);
         // Il server comunica se la partita è terminata o meno
@@ -238,7 +172,7 @@ int main(int argc, char *argv[]){
 
         if(partitaInCorso){
             // La partita non è finita. Si procede.
-            if(child != 0){
+            if(!is_computer){
                 do {
                     move();
                     print_board();
@@ -249,7 +183,7 @@ int main(int argc, char *argv[]){
 
             move_played = 0;
 
-            if(child != 0){
+            if(!is_computer){
                 print_move_feedback();
                 remove_terminal_echo();
             }
@@ -257,7 +191,7 @@ int main(int argc, char *argv[]){
             v(SERVER, WITHINT);
         } else {
             // La partita è terminata
-            if(child != 0){
+            if(!is_computer){
                 printf("\n%s", GAME_ENDED);
                 if(info->winner == getpid())
                     printf(" %s\n\n", YOU_WON);
@@ -305,7 +239,7 @@ void set_sig_handlers(){
 void printError(const char *msg){
     char buff[256];
 
-    if(child == 0){
+    if(is_computer){
         snprintf(buff, 255, "[PC] %s", msg);
     } else {
         snprintf(buff, 255, "%s", msg);
@@ -355,17 +289,12 @@ int p(int semnum, int no_int){
     p.sem_op = -1;
     p.sem_flg = 0;
 
-    /**
-     * A differenza del server, non ci importa controllare di ricevere EINTR perché un client termina al primo segnale
-     * SIGINT/SIGTERM/SIGHUP. Dunque alla loro ricezione, si è sicuri di terminare l'esecuzione, dunque non ci importa di controllare
-     * il flusso d'esecuzione successivo alla p.
-    */
-
     int code;
     if((code = semop(semaphores, &p, 1)) == -1){
         // Vero errore solo se non si riceve EINTR ( = si è ricevuto un segnale)
-        if(errno != EINTR)
+        if(errno != EINTR){
             printError(P_ERR);
+        }
     }
 
     return code;
@@ -587,6 +516,7 @@ void init_data(){
 
     server = info->server_pid;
     semaphores = info->semaphores;
+    is_computer = info->automtic_match;
 
     board = shmat(info->board_shmid, NULL, 0);
     if(board == (void *) -1){
@@ -595,23 +525,22 @@ void init_data(){
         printError(SHMAT_ERR);
     }
 
-    if(child == -1){
-        if(info->num_clients > 1){
-            if(semop(info->semaphores, &v, 1) == -1)
-                printError(V_ERR);
-            printError(GAME_EXISTING_ERR);
-        } else {
-            info->client_pid[info->num_clients] = getpid();
+    
+    if(info->num_clients > 1){
+        if(semop(info->semaphores, &v, 1) == -1)
+            printError(V_ERR);
+        printError(GAME_EXISTING_ERR);
+    } else {
+        info->client_pid[info->num_clients] = getpid();
 
-            // Aggiunta del proprio username
-            int i;
-            for(i = 0; username[i] != '\0'; i++){
-                info->usernames[info->num_clients][i] = username[i];
-            }
-            info->usernames[info->num_clients][i] = '\0';
-            
-            info->num_clients++;
+        // Aggiunta del proprio username
+        int i;
+        for(i = 0; username[i] != '\0'; i++){
+            info->usernames[info->num_clients][i] = username[i];
         }
+        info->usernames[info->num_clients][i] = '\0';
+        
+        info->num_clients++;
     }
 
     if(semop(semaphores, &v, 1) == -1)
@@ -662,6 +591,7 @@ void removeIPCs(){
 }
 
 void signal_handler(int sig){
+    
     if(sig == SIGINT || sig == SIGHUP){
 
         // Reimposta l'handler per SIGINT
@@ -673,13 +603,13 @@ void signal_handler(int sig){
         }
 
         // Bisogna usare write perché printf bufferizza e viene stampato comunque ^C
-        if(child != 0)
+        if(!is_computer)
             write(STDOUT_FILENO, "\b\b  \b\b", 7);
 
         int now = time(NULL);
         if(now - sigint_timestamp < MAX_SECONDS || sig == SIGHUP) {
 
-            if(child != 0){
+            if(!is_computer){
                 printf("%s\n", BLANK_LINE);
                 printf("%s\n\n", QUITTING);
 
@@ -702,8 +632,8 @@ void signal_handler(int sig){
 
     } else if(sig == SIGTERM){
         // Terminazione causata dal server.
-
-        if(child != 0){
+        
+        if(!is_computer){
             printf("\r%s\n", BLANK_LINE);
 
             // P e V non necessarie: si è sicuri che info->winner ha già il valore che deve assumere.
@@ -715,7 +645,7 @@ void signal_handler(int sig){
 
         removeIPCs();
 
-        if(child != 0)
+        if(!is_computer)
             restore_terminal_echo();
 
         exit(0);
