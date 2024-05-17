@@ -74,10 +74,12 @@ int main(int argc, char *argv[]){
         int gameIsReady = 0;
         do {
             
+            // Si aspetta di ricevera un via libera da un client
             while(p(SERVER, WITHINT) == -1);
             
             p(INFO_SEM, NOINT);
-                
+            
+            // Si è in due giocatori, ovvero la partita può iniziare
             if(info->client_pid[0] != 0 && info->client_pid[1] != 0)
                 gameIsReady = 1;
 
@@ -88,31 +90,27 @@ int main(int argc, char *argv[]){
                                                                         info->client_pid[matchinfo.players_ready], info->num_clients);
                     matchinfo.players_ready++;
                 }
+
+                // Bisogna generare il processo che gioca come COMPUTER
                 if(info->automtic_match && info->num_clients == 1)
                     split_into_computer();
-            } else if(info->num_clients < matchinfo.players_ready){
-                matchinfo.players_ready--;
             }
 
             v(INFO_SEM, NOINT);
         } while(!gameIsReady);
 
         printf("\n%s\n", GAME_STARTING);
-
         init_board();
 
         p(INFO_SEM, NOINT);
 
         info->game_started = 1;
-
         matchinfo.turn = 0;
-
         int partitaInCorso = info->game_started;
 
         // La partita è pronta. Lo si comunica ai client facendo riprendere la loro esecuzione, i quali visualizzano la matrice
         // a schermo e aspettano.
         v(CLIENT1_SEM, WITHINT);
-
         v(CLIENT2_SEM, WITHINT);
 
         v(INFO_SEM, NOINT);
@@ -245,48 +243,57 @@ void v(int semnum, int no_int){
         sigprocmask(SIG_SETMASK, &processSet, NULL);
 }
 
-void pb(int n){
-    int i = 31;
-    while (i > 0) {
-        if (n & 1)
-            printf("1");
-        else
-            printf("0");
-
-        n >>= 1;
-        i--;
-    }
-    printf("\n");
-}
-
 void split_into_computer(){
     pid_t child = fork();
 
-    /**
-     * Non va bene nel caso di errore di execl
-    */
     if(child == 0){
         // BISOGNA METTERE LA MASCHERA A QUELLA VECCHIA DEL SERVER (OVVERO QUELLA PRIMA DELLA P)
+        // ALTRIMENTI IL CLIENT COMPUTER NON RICEVERA' I SEGNALI
         sigprocmask(SIG_SETMASK, &processSet, NULL);
 
         char *args[] = {"bin/TriClient", "Computer", NULL};
         execvp("bin/TriClient", args);
 
-        p(INFO_SEM, NOINT);
-
+        // In caso il server non riesca ad eseguire execvp, si deallocano le risorse che ha ereditato
+        // e si ripristina il server allo stato iniziale (prima della richiesta di giocare del client).
+        // Inoltre si fa terminare il client.
         info->winner = info->server_pid;
 
-        if(info->client_pid[0] != 0)
+        int index;
+        if(info->client_pid[0] != 0){
             if(kill(info->client_pid[0], SIGTERM) == -1)
                     printError(SIGTERM_SEND_ERR);
+            index = 0;
+        }
 
-        if(info->client_pid[1] != 0)
+        if(info->client_pid[1] != 0){
             if(kill(info->client_pid[1], SIGTERM) == -1)
                 printError(SIGTERM_SEND_ERR);
+            index = 1;
+        }
 
-        v(INFO_SEM, NOINT);
+        info->client_pid[index] = 0;
+        info->num_clients--;
+        info->automtic_match = 0;
 
-        printError(NO_CHILD_CREATED_ERR);
+        if(kill(getppid(), SIGUSR2) == -1)
+            printf("[PC] %s\n", SIGUSR2_SEND_ERR);
+
+        for(int i = 0; info->usernames[index][i] != '\0'; i++)
+            info->usernames[index][i] = '\0';
+
+
+        if(board != NULL){
+            if(shmdt(board) == -1)
+                printf("%s\n", SHMDT_ERR);
+        }
+
+        if(info != NULL){
+            if(shmdt(info) == -1)
+                printf("%s\n", SHMDT_ERR);
+        }
+
+        exit(EXIT_FAILURE);   
     }
 }
 
@@ -352,6 +359,7 @@ void init_data(char *argv[]){
         printError(BOARD_SHM_ERR);
     }
 
+    // Inizializzazione dati utili.
     info->server_pid = getpid();
     info->client_pid[0] = 0;
     info->client_pid[1] = 0;

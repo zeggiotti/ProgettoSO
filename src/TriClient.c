@@ -12,7 +12,7 @@
 #include <termios.h>
 
 void printError(const char *);
-void init_data();
+void init_data(int);
 void print_board();
 void print_move_feedback();
 void move();
@@ -67,9 +67,26 @@ sigset_t processSet;
 
 int main(int argc, char *argv[]){
 
+    int vs_computer = 0;
+
+    /**
+     * Si controllano i parametri. Se si gioca contro il computer, si genera il processo figlio (lo si fa fare al server).
+     * Per questo motivo, molte delle stampe a video saranno impedite al computer.
+    */
     if(argc < 2){
         printf("%s", CLIENT_TERMINAL_CMD);
         exit(0);
+    } else if(argc == 3){
+        if(argv[2][0] == '*' && argv[2][1] == '\0'){
+            // Ci si deve sdoppiare
+            vs_computer = 1;
+        } else {
+            printf("%s", CLIENT_TERMINAL_CMD);
+            exit(EXIT_FAILURE);
+        }
+    } else if(argc > 3) {
+        printf("%s", CLIENT_TERMINAL_CMD);
+        exit(EXIT_FAILURE);
     }
 
     srand(time(NULL));
@@ -81,36 +98,16 @@ int main(int argc, char *argv[]){
     }
     username[i] = '\0';
 
-    init_data();
+    init_data(vs_computer);
 
-    /**
-     * Si controllano i parametri. Se si gioca contro il computer, si genera il processo figlio (sarà lui il computer).
-     * Per questo motivo, molte delle stampe a video saranno impedite al computer.
-    */
-    if(argc == 3){
-        if(argv[2][0] == '*' && argv[2][1] == '\0'){
-            // Ci si deve sdoppiare
-            p(INFO_SEM, NOINT);
-            info->automtic_match = 1;
-            v(INFO_SEM, NOINT);
-        } else {
-            printf("%s", CLIENT_TERMINAL_CMD);
-            exit(EXIT_FAILURE);
-        }
-    } else if(argc > 3) {
-        printf("%s", CLIENT_TERMINAL_CMD);
-        exit(EXIT_FAILURE);
-    }
+    // Dice al server di generare il giocatore Computer
+    p(INFO_SEM, NOINT);
+    info->automtic_match = vs_computer;
+    v(INFO_SEM, NOINT);
 
     set_sig_handlers();
 
     tcgetattr(STDIN_FILENO, &termios);
-
-    /**
-     * Questo blocco serve per sdoppiarsi nel caso di esecuzione con \*.
-     * Se ci si deve sdoppiare lo si fa e dopo solo il processo dell'utente inserirà nel server le informazioni
-     * di entrambi i client. Altrimenti si inizializzano i dati normalmente.
-    */
     
     if(!is_computer)
         printf("%s", CLEAR);
@@ -120,6 +117,8 @@ int main(int argc, char *argv[]){
         player = 0;
     else
         player = 1;
+
+    // Il semaforo su cui si sincronizzerà il client
     int my_semaphore = (player == 0) ? CLIENT1_SEM : CLIENT2_SEM;
 
     // Comunica al server che ci si è collegati alla partita.
@@ -154,6 +153,8 @@ int main(int argc, char *argv[]){
     }
 
     while(partitaInCorso) {
+
+        // Attesa del proprio turno
         while(p(my_semaphore, WITHINT) == -1);
 
         // Svuota il buffer del terminale e ignora tutti i caratteri inseriti.
@@ -204,7 +205,7 @@ int main(int argc, char *argv[]){
     }
 
     // Nel normale flusso d'esecuzione: i client si rimuovono dalla partita terminata e fanno procedere il server (che sta aspettando)
-    // alla rimozione degli IPCs
+    // alla rimozione degli IPCs.
     remove_pid_from_game();
     removeIPCs();
 
@@ -216,6 +217,8 @@ int main(int argc, char *argv[]){
  * Imposta gli handler dei segnali da catturare.
 */
 void set_sig_handlers(){
+
+    // Si fa in modo che il segnale SIGINT non faccia ricominciare la system call read() da capo
     struct sigaction act;
     act.sa_flags = ~SA_RESTART;
     act.sa_handler = signal_handler;
@@ -480,7 +483,7 @@ void pc_move(){
 /**
  * Ottiene i dati inizializzati dal server riguardo la partita da giocare.
 */
-void init_data(){
+void init_data(int vs_computer){
     key_t lobbyShmKey = ftok(PATH_TO_FILE, FTOK_KEY);
     if(lobbyShmKey == -1)
         printError(FTOK_ERR);
@@ -525,8 +528,12 @@ void init_data(){
         printError(SHMAT_ERR);
     }
 
+    int clientsLimit = 1;
+    if(vs_computer){
+        clientsLimit = 0;
+    }
     
-    if(info->num_clients > 1){
+    if(info->num_clients > clientsLimit){
         if(semop(info->semaphores, &v, 1) == -1)
             printError(V_ERR);
         printError(GAME_EXISTING_ERR);
