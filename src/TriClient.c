@@ -100,10 +100,10 @@ int main(int argc, char *argv[]){
 
     init_data(vs_computer);
 
-    // Dice al server di generare il giocatore Computer
+    // Dice al server di generare il giocatore Computer se richiesto dall'utente.
     if(!is_computer){
         p(INFO_SEM, NOINT);
-        info->automtic_match = vs_computer;
+        info->automatic_match = vs_computer;
         v(INFO_SEM, NOINT);
     }
 
@@ -523,7 +523,7 @@ void init_data(int vs_computer){
 
     server = info->server_pid;
     semaphores = info->semaphores;
-    is_computer = info->automtic_match;
+    is_computer = info->automatic_match;
 
     board = shmat(info->board_shmid, NULL, 0);
     if(board == (void *) -1){
@@ -544,7 +544,7 @@ void init_data(int vs_computer){
      * - si è eseguiti come client, ma si trova, nonostante il numero di client, un pid del secondo giocatore diverso dal nostro.
      * Permettiamo cosi di passare al client eseguito come computer.
     */
-    if(info->num_clients > clientsLimit || (!vs_computer && info->automtic_match && info->client_pid[1] != getpid())){
+    if(info->num_clients > clientsLimit || (!vs_computer && info->automatic_match && info->client_pid[1] != getpid())){
         is_computer = 0;
         if(semop(info->semaphores, &v, 1) == -1)
             printError(V_ERR);

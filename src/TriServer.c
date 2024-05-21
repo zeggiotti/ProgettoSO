@@ -92,7 +92,7 @@ int main(int argc, char *argv[]){
                 }
 
                 // Bisogna generare il processo che gioca come COMPUTER
-                if(info->automtic_match && info->num_clients == 1){
+                if(info->automatic_match && info->num_clients == 1){
                     split_into_computer();
                 }
             }
@@ -281,7 +281,7 @@ void split_into_computer(){
 
         info->client_pid[index] = 0;
         info->num_clients--;
-        info->automtic_match = 0;
+        info->automatic_match = 0;
 
         if(kill(getppid(), SIGUSR2) == -1)
             printf("[PC] %s\n", SIGUSR2_SEND_ERR);
@@ -371,7 +371,7 @@ void init_data(char *argv[]){
     info->server_pid = getpid();
     info->client_pid[0] = 0;
     info->client_pid[1] = 0;
-    info->automtic_match = 0;
+    info->automatic_match = 0;
 
     info->num_clients = 0;
     info->timeout = atoi(argv[1]);
