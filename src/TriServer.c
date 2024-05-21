@@ -12,8 +12,7 @@
 #include "data.h"
 
 /**
- * TODO: Controllo errori su SIGHUP.
- *       Gestione errore file in data non trovato.
+ * TODO: Gestione errore file in data non trovato.
 */
 
 void printError(const char *);
