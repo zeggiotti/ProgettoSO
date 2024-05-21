@@ -11,6 +11,11 @@
 #include <errno.h>
 #include "data.h"
 
+/**
+ * TODO: Controllo errori su SIGHUP.
+ *       Gestione errore file in data non trovato.
+*/
+
 void printError(const char *);
 void init_data();
 void split_into_computer();
@@ -68,7 +73,7 @@ int main(int argc, char *argv[]){
 
         printf("%s\n", WAITING_FOR_PLAYERS);
 
-        // Ad ogni segnale che fa riprendere l'esecuzione (SIGUSR1 dei client) si controlla se
+        // Ogni volta che si riprende l'esecuzione si controlla se
         // stanno partecipando due giocatori. Se così non è si aspetta ancora. Permette di non fraintendere
         // i segnali SIGINT ecc...
         int gameIsReady = 0;
@@ -178,10 +183,6 @@ int main(int argc, char *argv[]){
 void set_sig_handlers(){
     if(signal(SIGINT, signal_handler) == SIG_ERR){
         printError(SIGINT_HANDLER_ERR);
-    }
-
-    if(signal(SIGUSR1, signal_handler) == SIG_ERR){
-        printError(SIGUSR1_HANDLER_ERR);
     }
 
     if(signal(SIGUSR2, signal_handler) == SIG_ERR){

@@ -227,9 +227,6 @@ void set_sig_handlers(){
     if(signal(SIGTERM, signal_handler) == SIG_ERR)
         printError(SIGTERM_HANDLER_ERR);
 
-    if(signal(SIGUSR1, signal_handler) == SIG_ERR)
-        printError(SIGUSR1_HANDLER_ERR);
-
     if(signal(SIGHUP, signal_handler) == SIG_ERR)
         printError(SIGHUP_HANDLER_ERR);
     
