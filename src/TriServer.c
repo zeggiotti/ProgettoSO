@@ -92,8 +92,9 @@ int main(int argc, char *argv[]){
                 }
 
                 // Bisogna generare il processo che gioca come COMPUTER
-                if(info->automtic_match && info->num_clients == 1)
+                if(info->automtic_match && info->num_clients == 1){
                     split_into_computer();
+                }
             }
 
             v(INFO_SEM, NOINT);
@@ -294,7 +295,10 @@ void split_into_computer(){
         }
 
         exit(EXIT_FAILURE);   
+    } else {
+        info->client_pid[1] = child;
     }
+
 }
 
 /**

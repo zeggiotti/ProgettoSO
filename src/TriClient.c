@@ -101,9 +101,11 @@ int main(int argc, char *argv[]){
     init_data(vs_computer);
 
     // Dice al server di generare il giocatore Computer
-    p(INFO_SEM, NOINT);
-    info->automtic_match = vs_computer;
-    v(INFO_SEM, NOINT);
+    if(!is_computer){
+        p(INFO_SEM, NOINT);
+        info->automtic_match = vs_computer;
+        v(INFO_SEM, NOINT);
+    }
 
     set_sig_handlers();
 
@@ -533,7 +535,15 @@ void init_data(int vs_computer){
         clientsLimit = 0;
     }
     
-    if(info->num_clients > clientsLimit){
+    /**
+     * Una partita è gia iniziata se:
+     * - si è eseguiti normalmente, e c'è più di un giocatore
+     * - si è eseguiti contro il computer, e c'è gia un giocatore
+     * - si è eseguiti come client, ma si trova, nonostante il numero di client, un pid del secondo giocatore diverso dal nostro.
+     * Permettiamo cosi di passare al client eseguito come computer.
+    */
+    if(info->num_clients > clientsLimit || (!vs_computer && info->automtic_match && info->client_pid[1] != getpid())){
+        is_computer = 0;
         if(semop(info->semaphores, &v, 1) == -1)
             printError(V_ERR);
         printError(GAME_EXISTING_ERR);
@@ -546,7 +556,7 @@ void init_data(int vs_computer){
             info->usernames[info->num_clients][i] = username[i];
         }
         info->usernames[info->num_clients][i] = '\0';
-        
+
         info->num_clients++;
     }
 
