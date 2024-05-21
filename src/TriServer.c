@@ -248,6 +248,12 @@ void split_into_computer(){
     pid_t child = fork();
 
     if(child == 0){
+        info->client_pid[1] = getpid();
+    } else {
+        info->client_pid[1] = child;
+    }
+
+    if(child == 0){
         // BISOGNA METTERE LA MASCHERA A QUELLA VECCHIA DEL SERVER (OVVERO QUELLA PRIMA DELLA P)
         // ALTRIMENTI IL CLIENT COMPUTER NON RICEVERA' I SEGNALI
         sigprocmask(SIG_SETMASK, &processSet, NULL);
@@ -295,8 +301,6 @@ void split_into_computer(){
         }
 
         exit(EXIT_FAILURE);   
-    } else {
-        info->client_pid[1] = child;
     }
 
 }
