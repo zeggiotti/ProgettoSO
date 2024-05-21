@@ -108,8 +108,6 @@ int main(int argc, char *argv[]){
     }
 
     set_sig_handlers();
-
-    tcgetattr(STDIN_FILENO, &termios);
     
     if(!is_computer)
         printf("%s", CLEAR);
@@ -260,16 +258,20 @@ void printError(const char *msg){
  * NB: Potrebbe dare problemi in Delta.
 */
 void remove_terminal_echo(){
-    termios.c_lflag &= ~ECHO;
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+    if(TERM_ECHO){
+        termios.c_lflag &= ~ECHO;
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+    }
 }
 
 /**
  * Abilita la visualizzazione dei caratteri inseriti a linea di comando.
 */
 void restore_terminal_echo(){
-    termios.c_lflag |= ECHO;
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+    if(TERM_ECHO){
+        termios.c_lflag |= ECHO;
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios);
+    }
 }
 
 /**
@@ -564,6 +566,9 @@ void init_data(int vs_computer){
         printError(V_ERR);
 
     sigprocmask(SIG_SETMASK, &processSet, NULL);
+
+    if(TERM_ECHO)
+        tcgetattr(STDIN_FILENO, &termios);
 }
 
 /**

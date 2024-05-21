@@ -11,6 +11,8 @@
 #define WITHINT 0
 #define NOINT 1
 
+#define TERM_ECHO 1     // Indica se si vuole che non ci siano echo su terminale quando si deve aspettare.
+
 #define MAX_SECONDS 2   // Numero massimo di secondi che devono passare tra un Ctrl+C e l'altro.
 
 #define USERNAME_DIM 64
