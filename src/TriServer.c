@@ -41,12 +41,6 @@ int sigint_timestamp = 0;
 // Set di segnali ricevibili dal processo.
 sigset_t processSet;
 
-// Informazioni locali al server per gestire la partita.
-struct matchinfo {
-    int players_ready;
-    int turn;
-} matchinfo;
-
 int main(int argc, char *argv[]){
 
     // Il timeout deve essere un valore numerico.
@@ -88,11 +82,11 @@ int main(int argc, char *argv[]){
                 gameIsReady = 1;
 
             // Calcola cambiamenti per mostrare chi si è connesso alla partita
-            if(info->num_clients > matchinfo.players_ready){
-                while(info->num_clients > matchinfo.players_ready){
-                    printf("\n> %s (PID %d) si è collegato (%d/2).\n", info->usernames[matchinfo.players_ready], 
-                                                                        info->client_pid[matchinfo.players_ready], info->num_clients);
-                    matchinfo.players_ready++;
+            if(info->num_clients > info->players_ready){
+                while(info->num_clients > info->players_ready){
+                    printf("\n> %s (PID %d) si è collegato (%d/2).\n", info->usernames[info->players_ready], 
+                                                                        info->client_pid[info->players_ready], info->num_clients);
+                    info->players_ready++;
                 }
 
                 // Bisogna generare il processo che gioca come COMPUTER
@@ -110,7 +104,7 @@ int main(int argc, char *argv[]){
         p(INFO_SEM, NOINT);
 
         info->game_started = 1;
-        matchinfo.turn = 0;
+        int turn = 0;
         int partitaInCorso = info->game_started;
 
         // La partita è pronta. Lo si comunica ai client facendo riprendere la loro esecuzione, i quali visualizzano la matrice
@@ -137,15 +131,15 @@ int main(int argc, char *argv[]){
             info->game_started = partitaInCorso;
 
             if(info->move_made[0] == 'N' && info->move_made[1] == 'V')
-                printf("\n> %s (PID %d) ha giocato una mossa non valida.\n", info->usernames[matchinfo.turn], info->client_pid[matchinfo.turn]);
+                printf("\n> %s (PID %d) ha giocato una mossa non valida.\n", info->usernames[turn], info->client_pid[turn]);
             else if(info->move_made[0] == 'T' && info->move_made[1] == 'O')
-                printf("\n> %s (PID %d) non ha giocato una mossa entro lo scadere dei secondi.\n", info->usernames[matchinfo.turn], info->client_pid[matchinfo.turn]);
+                printf("\n> %s (PID %d) non ha giocato una mossa entro lo scadere dei secondi.\n", info->usernames[turn], info->client_pid[turn]);
             else
-                printf("\n> %s (PID %d) ha giocato la mossa %s.\n", info->usernames[matchinfo.turn], info->client_pid[matchinfo.turn],
+                printf("\n> %s (PID %d) ha giocato la mossa %s.\n", info->usernames[turn], info->client_pid[turn],
                                                 info->move_made);
 
             if(partitaInCorso){
-                matchinfo.turn = (matchinfo.turn == 0) ? 1 : 0;
+                turn = (turn == 0) ? 1 : 0;
                 semaphore_turn = (semaphore_turn == CLIENT1_SEM) ? CLIENT2_SEM : CLIENT1_SEM;
             }
         }
@@ -258,8 +252,13 @@ void split_into_computer(){
         // ALTRIMENTI IL CLIENT COMPUTER NON RICEVERA' I SEGNALI
         sigprocmask(SIG_SETMASK, &processSet, NULL);
 
-        char *args[] = {"bin/TriClient", "Computer", NULL};
-        execvp("bin/TriClient", args);
+        if(setenv("IS_COMPUTER", "TRUE", 1) != -1){
+            char *args[] = {"bin/TriClient", "Computer", NULL};
+            execvp("bin/TriClient", args);
+            printf("%s\n", NO_CHILD_CREATED_ERR);
+        } else {
+            printf("%s\n", CANT_SET_COMPUTER);
+        }
 
         // In caso il server non riesca ad eseguire execvp, si deallocano le risorse che ha ereditato
         // e si ripristina il server allo stato iniziale (prima della richiesta di giocare del client).
@@ -267,28 +266,17 @@ void split_into_computer(){
         info->winner = info->server_pid;
 
         int index;
-        if(info->client_pid[0] != 0){
-            if(kill(info->client_pid[0], SIGTERM) == -1)
-                    printError(SIGTERM_SEND_ERR);
-            index = 0;
-        }
-
-        if(info->client_pid[1] != 0){
-            if(kill(info->client_pid[1], SIGTERM) == -1)
-                printError(SIGTERM_SEND_ERR);
-            index = 1;
-        }
-
-        info->client_pid[index] = 0;
-        info->num_clients--;
+        if(kill(info->client_pid[0], SIGTERM) == -1)
+            printError(SIGTERM_SEND_ERR);
+            
+        info->client_pid[0] = 0;
+        info->client_pid[1] = 0;
+        info->num_clients = 0;
+        info->players_ready = 0;
         info->automatic_match = 0;
 
-        if(kill(getppid(), SIGUSR2) == -1)
-            printf("[PC] %s\n", SIGUSR2_SEND_ERR);
-
         for(int i = 0; info->usernames[index][i] != '\0'; i++)
-            info->usernames[index][i] = '\0';
-
+            info->usernames[0][i] = '\0';
 
         if(board != NULL){
             if(shmdt(board) == -1)
@@ -374,6 +362,7 @@ void init_data(char *argv[]){
     info->automatic_match = 0;
 
     info->num_clients = 0;
+    info->players_ready = 0;
     info->timeout = atoi(argv[1]);
     info->signs[0] = argv[2][0];
     info->signs[1] = argv[3][0];
@@ -395,8 +384,6 @@ void init_data(char *argv[]){
         printError(V_ERR);
 
     sigprocmask(SIG_SETMASK, &processSet, NULL);
-
-    matchinfo.players_ready = 0;
 }
 
 /**
@@ -564,7 +551,7 @@ void signal_handler(int sig){
             removeIPCs();
             exit(0);
         } else {
-            matchinfo.players_ready--;
+            info->players_ready--;
         }
 
         v(INFO_SEM, NOINT);

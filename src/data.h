@@ -54,6 +54,8 @@
 #define SEM_ERR "Errore in creazione o inizializzazione del set di semafori."
 #define SEM_DEL_ERR "Errore in rimozione del set di semafori."
 
+#define CANT_SET_COMPUTER "Errore in settaggio impostazioni computer"
+
 #define WAITING_FOR_PLAYERS "> In attesa di giocatori..."
 
 #define NO_GAME_FOUND "Non è stata trovata alcuna partita a cui partecipare.\nEsegui un server per iniziare a giocare."
@@ -80,6 +82,7 @@ struct lobby_data {
     pid_t client_pid[2];
     char usernames[2][USERNAME_DIM];
     int num_clients;
+    int players_ready;
     int timeout;
     char signs[2];          // Caratteri che useranno i client.
     int board_shmid;        // Id di seg. di mem. condivisa con la matrice di gioco.
