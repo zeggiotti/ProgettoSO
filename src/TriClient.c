@@ -541,7 +541,10 @@ void init_data(int vs_computer){
      * - si è eseguiti come client, ma si trova, nonostante il numero di client, un pid del secondo giocatore diverso dal nostro.
      * Permettiamo cosi di passare al client eseguito come computer.
     */
-    if(info->num_clients > clientsLimit || (!vs_computer && info->automatic_match && info->client_pid[1] != getpid())){
+   /**
+    * NB: if(info->num_clients > clientsLimit || (!vs_computer && info->automatic_match && info->client_pid[1] != getpid()))
+   */
+    if(info->num_clients > clientsLimit || (!vs_computer && info->automatic_match && getenv("IS_COMPUTER") == NULL)){
         is_computer = 0;
         if(semop(info->semaphores, &v, 1) == -1)
             printError(V_ERR);

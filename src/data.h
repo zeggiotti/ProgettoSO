@@ -28,7 +28,7 @@
 #define PATH_TO_FILE "data/keyfile.txt"
 #define FTOK_KEY 'f'
 
-#define FTOK_ERR "Errore nella generazione di una chiave con ftok()."
+#define FTOK_ERR "Errore nella generazione di una chiave con ftok(). Controlla che il file esista."
 
 #define SIGINT_HANDLER_ERR "Errore in impostazione del SIGINT handler..."
 #define SIGUSR1_HANDLER_ERR "Errore in impostazione del SIGUSR1 handler..."

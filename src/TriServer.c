@@ -11,10 +11,6 @@
 #include <errno.h>
 #include "data.h"
 
-/**
- * TODO: Gestione errore file in data non trovato.
-*/
-
 void printError(const char *);
 void init_data();
 void split_into_computer();
@@ -241,11 +237,13 @@ void v(int semnum, int no_int){
 void split_into_computer(){
     pid_t child = fork();
 
+    /*
     if(child == 0){
         info->client_pid[1] = getpid();
     } else {
         info->client_pid[1] = child;
     }
+    */
 
     if(child == 0){
         // BISOGNA METTERE LA MASCHERA A QUELLA VECCHIA DEL SERVER (OVVERO QUELLA PRIMA DELLA P)
