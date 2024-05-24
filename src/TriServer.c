@@ -11,6 +11,9 @@
 #include <errno.h>
 #include "data.h"
 
+#include <fcntl.h>
+#include <string.h>
+
 void printError(const char *);
 void init_data();
 void split_into_computer();
@@ -21,6 +24,7 @@ void signal_handler(int);
 void set_sig_handlers();
 int p(int, int);
 void v(int, int);
+void logger(int);
 
 // Id del seg. di memoria condivisa che contiene i dati della partita.
 int lobbyDataId = 0;
@@ -65,21 +69,15 @@ int main(int argc, char *argv[]){
         // Ogni volta che si riprende l'esecuzione si controlla se
         // stanno partecipando due giocatori. Se così non è si aspetta ancora. Permette di non fraintendere
         // i segnali SIGINT ecc...
-        int gameIsReady = 0;
         do {
-            
             // Si aspetta di ricevera un via libera da un client
             while(p(SERVER, WITHINT) == -1);
             
             p(INFO_SEM, NOINT);
-            
-            // Si è in due giocatori, ovvero la partita può iniziare
-            if(info->client_pid[0] != 0 && info->client_pid[1] != 0)
-                gameIsReady = 1;
 
             // Calcola cambiamenti per mostrare chi si è connesso alla partita
             if(info->num_clients > info->players_ready){
-                while(info->num_clients > info->players_ready){
+                if(info->num_clients > info->players_ready){
                     printf("\n> %s (PID %d) si è collegato (%d/2).\n", info->usernames[info->players_ready], 
                                                                         info->client_pid[info->players_ready], info->num_clients);
                     info->players_ready++;
@@ -92,7 +90,7 @@ int main(int argc, char *argv[]){
             }
 
             v(INFO_SEM, NOINT);
-        } while(!gameIsReady);
+        } while(info->players_ready < 2);
 
         printf("\n%s\n", GAME_STARTING);
         init_board();
@@ -103,12 +101,12 @@ int main(int argc, char *argv[]){
         int turn = 0;
         int partitaInCorso = info->game_started;
 
+        v(INFO_SEM, NOINT);
+
         // La partita è pronta. Lo si comunica ai client facendo riprendere la loro esecuzione, i quali visualizzano la matrice
         // a schermo e aspettano.
         v(CLIENT1_SEM, WITHINT);
         v(CLIENT2_SEM, WITHINT);
-
-        v(INFO_SEM, NOINT);
 
         // Gestione della partita. Sono necessarie le P e le V perché non si può essere sicuri che sia un solo processo
         // ad accedere ad info in un istante, dal momento che si legge e si modifica info->game_started.
@@ -116,6 +114,7 @@ int main(int argc, char *argv[]){
         int semaphore_turn = CLIENT1_SEM;
 
         while(partitaInCorso){
+            
             v(semaphore_turn, WITHINT);
 
             // Questo non è un polling: il server attende sul semaforo in una attesa non attiva. Il ciclo serve per distinguere
@@ -164,6 +163,14 @@ int main(int argc, char *argv[]){
         removeIPCs();
     }
 
+}
+
+void logger(int semturn){
+    int log = open("data/log.txt", O_WRONLY | O_APPEND, S_IRWXU);
+    char buf[256];
+    sprintf(buf, "[SERVER] semaphore_turn: %d, semaforo_server: %d\n", semturn, semctl(info->semaphores, SERVER, GETVAL, NULL));
+    write(log, buf, strlen(buf) + 1);
+    close(log);
 }
 
 /**

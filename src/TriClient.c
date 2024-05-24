@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <termios.h>
 
+#include <fcntl.h>
+#include <string.h>
+
 void printError(const char *);
 void init_data(int);
 void print_board();
@@ -25,6 +28,7 @@ void remove_terminal_echo();
 void restore_terminal_echo();
 int p(int, int);
 void v(int, int);
+void logger(int);
 
 // Attributi del terminale
 struct termios termios;
@@ -211,6 +215,14 @@ int main(int argc, char *argv[]){
 
     v(SERVER, WITHINT);
 
+}
+
+void logger(int player){
+    int log = open("data/log.txt", O_WRONLY | O_APPEND, S_IRWXU);
+    char buf[256];
+    sprintf(buf, "[CLIENT] player: %d, pid: %d, ha fatto V al server\n", player, getpid());
+    write(log, buf, strlen(buf) + 1);
+    close(log);
 }
 
 /**
@@ -518,17 +530,6 @@ void init_data(int vs_computer){
     if(semop(info->semaphores, &p, 1) == -1)
         printError(P_ERR);
 
-    server = info->server_pid;
-    semaphores = info->semaphores;
-    is_computer = info->automatic_match;
-
-    board = shmat(info->board_shmid, NULL, 0);
-    if(board == (void *) -1){
-        if(semop(info->semaphores, &v, 1) == -1)
-            printError(V_ERR);
-        printError(SHMAT_ERR);
-    }
-
     int clientsLimit = 1;
     if(vs_computer){
         clientsLimit = 0;
@@ -543,6 +544,8 @@ void init_data(int vs_computer){
     */
    /**
     * NB: if(info->num_clients > clientsLimit || (!vs_computer && info->automatic_match && info->client_pid[1] != getpid()))
+    * NB: Potrebbe esserci un errore su esecuzione parallela di client normali e client Computer. Si ritrovano a giocare
+    * un client con \* e uno senza che non è il Computer
    */
     if(info->num_clients > clientsLimit || (!vs_computer && info->automatic_match && getenv("IS_COMPUTER") == NULL)){
         is_computer = 0;
@@ -560,6 +563,17 @@ void init_data(int vs_computer){
         info->usernames[info->num_clients][i] = '\0';
 
         info->num_clients++;
+    }
+
+    server = info->server_pid;
+    semaphores = info->semaphores;
+    is_computer = info->automatic_match;
+
+    board = shmat(info->board_shmid, NULL, 0);
+    if(board == (void *) -1){
+        if(semop(info->semaphores, &v, 1) == -1)
+            printError(V_ERR);
+        printError(SHMAT_ERR);
     }
 
     if(semop(semaphores, &v, 1) == -1)
