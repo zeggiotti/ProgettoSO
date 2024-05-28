@@ -270,7 +270,6 @@ void split_into_computer(){
         // Inoltre si fa terminare il client.
         info->winner = info->server_pid;
 
-        int index;
         if(kill(info->client_pid[0], SIGTERM) == -1)
             printError(SIGTERM_SEND_ERR);
             
@@ -280,7 +279,7 @@ void split_into_computer(){
         info->players_ready = 0;
         info->automatic_match = 0;
 
-        for(int i = 0; info->usernames[index][i] != '\0'; i++)
+        for(int i = 0; info->usernames[0][i] != '\0'; i++)
             info->usernames[0][i] = '\0';
 
         if(board != NULL){
@@ -311,7 +310,7 @@ void init_data(char *argv[]){
         printError(SEM_ERR);
     }
 
-    short values[] = {1, 0, 0, 0};
+    unsigned short values[] = {1, 0, 0, 0};
     union semun arg;
     arg.array = values;
     if(semctl(sems, 0, SETALL, arg) == -1){
@@ -447,6 +446,7 @@ int check_board(){
         else
             winner_player = 1;
         info->winner = info->client_pid[winner_player];
+        return ended;
     } else if (isDraw){
         info->winner = info->server_pid;
         return isDraw;
