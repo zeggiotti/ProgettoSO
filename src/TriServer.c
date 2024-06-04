@@ -213,6 +213,7 @@ int p(int semnum, int no_int){
     p.sem_flg = 0;
 
     int code;
+    errno = 0;
     if((code = semop(info->semaphores, &p, 1)) == -1){
         // Vero errore solo se non si riceve EINTR ( = si è ricevuto un segnale)
         if(errno != EINTR)
