@@ -264,7 +264,6 @@ void printError(const char *msg){
 
 /**
  * Disabilita la visualizzazione dei caratteri inseriti a linea di comando.
- * NB: Potrebbe dare problemi in Delta.
 */
 void remove_terminal_echo(){
     if(TERM_ECHO){
@@ -413,8 +412,7 @@ void move(){
 
     // Se seconds == 0 non bisogna impostare un alarm. Anche alarm(0) va bene però cosi sembra più liscio.
     if(seconds > 0){
-        /** NB:*/
-        // Fa in modo che l'alarm faccia chiudere la read(). Se in delta funziona senza meglio, sennò AMEN.
+        // Fa in modo che l'alarm faccia chiudere la read().
         struct sigaction act;
         act.sa_flags = ~SA_RESTART;
         act.sa_handler = signal_handler;
@@ -542,11 +540,6 @@ void init_data(int vs_computer){
      * - si è eseguiti come client, ma si trova, nonostante il numero di client, un pid del secondo giocatore diverso dal nostro.
      * Permettiamo cosi di passare al client eseguito come computer.
     */
-   /**
-    * NB: if(info->num_clients > clientsLimit || (!vs_computer && info->automatic_match && info->client_pid[1] != getpid()))
-    * NB: Potrebbe esserci un errore su esecuzione parallela di client normali e client Computer. Si ritrovano a giocare
-    * un client con \* e uno senza che non è il Computer
-   */
     if(info->num_clients > clientsLimit || (!vs_computer && info->automatic_match && getenv("IS_COMPUTER") == NULL)){
         is_computer = 0;
         if(semop(info->semaphores, &v, 1) == -1)
